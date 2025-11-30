@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Выбор персонажа</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="file"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            cursor: pointer;
+        }
+
+        .image-preview {
+            margin-top: 10px;
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .image-preview.show {
+            display: block;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .selectbox {
+            width: 100%;
+            text-align: center;
+            appearance: none;
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 10px 40px 10px 12px;
+            font-size: 16px;
+            color: #333;
+            cursor: pointer;
+            outline: none;
+            transition: 0.2s border-color, 0.2s box-shadow;
+            background-image: url("data:image/svg+xml;utf8,<svg fill='%23999' height='18' width='18' viewBox='0 0 24 24' ><path d='M7 10l5 5 5-5z'/></svg>");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+        }
+
+        .selectbox:hover {
+            border-color: #888;
+        }
+
+        .selectbox:focus {
+            border-color: #5a8dee;
+            box-shadow: 0 0 0 3px rgba(90, 141, 238, 0.3);
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Выбрать NPC персонажа</h1>
+
+        <form id="npcForm">
+            <div class="form-group">
+                <label for="character">Выберите персонажа:</label>
+                <select class="selectbox" id="character" name="character" required>
+                    <option value="">Загрузка...</option>
+                </select>
+                <div class="error" id="characterError"></div>
+            </div>
+
+            <button type="submit" id="submitBtn">Присоединиться</button>
+        </form>
+    </div>
+
+    <script>
+        const selectEl = document.getElementById("character");
+        const submitBtn = document.getElementById("submitBtn");
+        const errorBox = document.getElementById("characterError");
+
+        // Загружаем список персонажей
+        async function loadCharacters() {
+            try {
+                const res = await fetch("http://localhost:8080/npccharacters");
+                const raw = await res.json();
+                const list = raw.map(x => x.name);
+
+                selectEl.innerHTML = "";
+                list.forEach(name => {
+                    const opt = document.createElement("option");
+                    opt.value = name;
+                    opt.textContent = name;
+                    selectEl.appendChild(opt);
+                });
+
+            } catch (err) {
+                selectEl.innerHTML = `<option value="">Ошибка загрузки</option>`;
+            }
+        }
+
+        loadCharacters();
+
+        // Отправка формы
+        document.getElementById("npcForm").addEventListener("submit", async function(e) {
+            e.preventDefault();
+
+            errorBox.textContent = "";
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Отправка...";
+
+            const formData = new FormData();
+            formData.append("character", selectEl.value);
+
+            try {
+                const response = await fetch("http://localhost:8080/joinnpc", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (response.ok) {
+                    window.location.href = "index.html";
+                } else {
+                    const txt = await response.text();
+                    errorBox.textContent = "Ошибка: " + txt;
+                }
+            } catch (err) {
+                errorBox.textContent = "Ошибка подключения к серверу";
+            }
+
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Присоединиться";
+        });
+    </script>
+</body>
+</html>

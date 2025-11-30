@@ -43,10 +43,18 @@ type GameState struct {
 }
 
 type Player struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Score int    `json:"score"`
-	IsNPC bool   `json:"-"`
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Score       int    `json:"score"`
+	IsNPC       bool   `json:"-"`
+	NPCCharacter *NPCCharacter `json:"-"` // Ссылка на персонажа NPC
+}
+
+type NPCCharacter struct {
+	Name         string `json:"name"`
+	Photo        string `json:"photo"`
+	ShowmanPrompt string `json:"showman_prompt"`
+	PlayerPrompt string `json:"player_prompt"`
 }
 
 type Question struct {
@@ -64,6 +72,8 @@ type Theme struct {
 }
 
 var gameState *GameState
+var npcCharacters []NPCCharacter
+var npcCharactersMap map[string]*NPCCharacter // Для быстрого поиска по имени
 
 func init() {
 	gameState = &GameState{
@@ -79,35 +89,43 @@ func init() {
 			},
 		},
 	}
+	npcCharactersMap = make(map[string]*NPCCharacter)
 }
 
 func main() {
+	// Очищаем папку players при старте сервера
+	os.RemoveAll("players")
+	
 	// Создаем необходимые папки
 	os.MkdirAll("package", 0755)
 	os.MkdirAll("players", 0755)
+	os.MkdirAll("npc_characters", 0755)
+
+	// Загружаем NPC персонажей при старте
+	if err := loadNPCCharacters(); err != nil {
+		log.Printf("Warning: Failed to load NPC characters: %v", err)
+	}
 
 	// Запускаем broadcaster для WebSocket
 	go gameState.broadcaster()
 
-	// HTTP эндпоинты
-	http.HandleFunc("/upload", handleUpload)
-	http.HandleFunc("/join", handleJoin)
-	http.HandleFunc("/joinnpc", handleJoinNPC)
-	http.HandleFunc("/state", handleState)
-	http.HandleFunc("/scores", handleScores)
-	http.HandleFunc("/data", handleData)
-	http.HandleFunc("/media", handleMedia)
-	http.HandleFunc("/currentplayer", handleCurrentPlayer)
-	http.HandleFunc("/playerstate", handlePlayerState)
-	http.HandleFunc("/start", handleStart)
-	http.HandleFunc("/selectquestion", handleSelectQuestion)
-	http.HandleFunc("/acknowledge", handleAcknowledge)
-	http.HandleFunc("/questionbeenshown", handleQuestionBeenShown)
-	http.HandleFunc("/requestanswer", handleRequestAnswer)
-	http.HandleFunc("/answer", handleAnswer)
-	
-	// WebSocket эндпоинт
-	http.HandleFunc("/ws", handleWebSocket)
+	http.Handle("/upload",           withCORS(http.HandlerFunc(handleUpload)))
+	http.Handle("/join",             withCORS(http.HandlerFunc(handleJoin)))
+	http.Handle("/joinnpc",          withCORS(http.HandlerFunc(handleJoinNPC)))
+	http.Handle("/npccharacters",    withCORS(http.HandlerFunc(handleNPCCharacters)))
+	http.Handle("/state",            withCORS(http.HandlerFunc(handleState)))
+	http.Handle("/scores",           withCORS(http.HandlerFunc(handleScores)))
+	http.Handle("/data",             withCORS(http.HandlerFunc(handleData)))
+	http.Handle("/media",            withCORS(http.HandlerFunc(handleMedia)))
+	http.Handle("/currentplayer",    withCORS(http.HandlerFunc(handleCurrentPlayer)))
+	http.Handle("/playerstate",      withCORS(http.HandlerFunc(handlePlayerState)))
+	http.Handle("/start",            withCORS(http.HandlerFunc(handleStart)))
+	http.Handle("/selectquestion",   withCORS(http.HandlerFunc(handleSelectQuestion)))
+	http.Handle("/acknowledge",      withCORS(http.HandlerFunc(handleAcknowledge)))
+	http.Handle("/questionbeenshown",withCORS(http.HandlerFunc(handleQuestionBeenShown)))
+	http.Handle("/requestanswer",    withCORS(http.HandlerFunc(handleRequestAnswer)))
+	http.Handle("/answer",           withCORS(http.HandlerFunc(handleAnswer)))
+	http.Handle("/ws",               withCORS(http.HandlerFunc(handleWebSocket)))
 
 	log.Println("Server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -181,10 +199,6 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	// Очищаем папку package
 	os.RemoveAll("package")
 	os.MkdirAll("package", 0755)
-
-	// Очищаем папку players
-	os.RemoveAll("players")
-	os.MkdirAll("players", 0755)
 
 	// Очищаем состояние игры
 	gameState.players = make(map[int]*Player)
@@ -318,6 +332,25 @@ func handleJoinNPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	characterName := r.FormValue("character")
+	if characterName == "" {
+		http.Error(w, "Missing character", http.StatusBadRequest)
+		return
+	}
+
+	// Ищем персонажа по имени
+	npcChar, exists := npcCharactersMap[strings.ToLower(characterName)]
+	if !exists {
+		http.Error(w, "Character not found", http.StatusNotFound)
+		return
+	}
+
 	gameState.mu.Lock()
 	defer gameState.mu.Unlock()
 
@@ -326,24 +359,78 @@ func handleJoinNPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	character := r.FormValue("character")
-	if character == "" {
-		http.Error(w, "Missing character", http.StatusBadRequest)
-		return
-	}
-
 	id := gameState.nextNPCId
 	gameState.nextNPCId++
 
+	// Копируем фото из папки npc_characters в папку players
+	sourcePhoto := filepath.Join("npc_characters", npcChar.Photo)
+	destPhoto := filepath.Join("players", fmt.Sprintf("%d%s", id, filepath.Ext(npcChar.Photo)))
+	
+	if err := copyFile(sourcePhoto, destPhoto); err != nil {
+		log.Printf("Warning: Failed to copy NPC photo: %v", err)
+		// Продолжаем даже если не удалось скопировать фото
+	}
+
 	gameState.players[id] = &Player{
-		ID:    id,
-		Name:  character,
-		Score: 0,
-		IsNPC: true,
+		ID:           id,
+		Name:         npcChar.Name,
+		Score:        0,
+		IsNPC:        true,
+		NPCCharacter: npcChar,
 	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(fmt.Sprintf("NPC joined with id %d", id)))
+}
+
+func handleNPCCharacters(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(npcCharacters)
+}
+
+func loadNPCCharacters() error {
+	jsonPath := filepath.Join("npc_characters", "characters.json")
+	
+	jsonBytes, err := os.ReadFile(jsonPath)
+	if err != nil {
+		return fmt.Errorf("failed to read NPC characters file: %w", err)
+	}
+
+	if err := json.Unmarshal(jsonBytes, &npcCharacters); err != nil {
+		return fmt.Errorf("failed to parse NPC characters JSON: %w", err)
+	}
+
+	// Заполняем map для быстрого поиска
+	npcCharactersMap = make(map[string]*NPCCharacter)
+	for i := range npcCharacters {
+		char := &npcCharacters[i]
+		npcCharactersMap[strings.ToLower(char.Name)] = char
+	}
+
+	log.Printf("Loaded %d NPC characters", len(npcCharacters))
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	return err
 }
 
 func handleState(w http.ResponseWriter, r *http.Request) {
@@ -1403,4 +1490,20 @@ func getFloat(m map[string]interface{}, key string) float64 {
 		}
 	}
 	return 0
+}
+
+func withCORS(h http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+        if r.Method == "OPTIONS" {
+            w.WriteHeader(http.StatusOK)
+            return
+        }
+
+        h.ServeHTTP(w, r)
+    })
 }

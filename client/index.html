@@ -470,6 +470,8 @@
                 console.error('Ошибка инициализации:', error);
                 addLog('Ошибка загрузки данных');
             }
+
+            document.querySelector('.host-photo').setAttribute('src', getPlayerAvatar(1000))
         }
 
         // Загрузка данных
@@ -493,24 +495,23 @@
         async function processZip(file) {
             const zip = await JSZip.loadAsync(file);
             
-            // Инициализируем словари files и urls
             files = {};
             urls = {};
-            
-            // Обрабатываем все файлы в ZIP
-            for (const [path, zipFile] of Object.entries(zip.files)) {
+
+            for (const [rawPath, zipFile] of Object.entries(zip.files)) {
+
+                const path = rawPath.replace(/\\/g, "/");
+
                 if (!zipFile.dir) {
-                    // Конвертируем файл в Blob
                     const blob = await zipFile.async('blob');
                     files[path] = blob;
-                    
-                    // Создаем URL для Blob
                     urls[path] = URL.createObjectURL(blob);
                 }
             }
-            
+
             return zip;
         }
+
 
         // Функция для сопоставления медиа из вопроса с ZIP
         function getMediaUrl(mediaPath) {

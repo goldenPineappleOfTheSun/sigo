@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ZIP Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #images img { width: 150px; margin: 10px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+
+<script>
+    async function test() {
+        console.log("Downloading ZIP...");
+        const response = await fetch("http://localhost:8080/media"); // <-- replace if needed
+        const zipBlob = await response.blob();
+
+        console.log("ZIP downloaded. Extracting...");
+
+        const zip = processZip(zipBlob)
+
+        console.log(Object.keys(zip));
+        alert("All files extracted!");
+    }
+
+    async function processZip(file) {
+        return await JSZip.loadAsync(file);
+    }
+
+    document.getElementById("loadBtn").onclick = test;
+</script>
+
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Присоединиться к игре</title>
+    <title>Загрузить пакет</title>
     <style>
         * {
             margin: 0;
@@ -124,99 +124,58 @@
 </head>
 <body>
     <div class="container">
-        <h1>Присоединиться к игре</h1>
-        <form id="joinForm" enctype="multipart/form-data">
+        <h1>Загрузить SIQ файл</h1>
+
+        <form id="uploadForm" enctype="multipart/form-data">
             <div class="form-group">
-                <label for="name">Имя игрока:</label>
-                <input type="text" id="name" name="name" required placeholder="Введите ваше имя">
-                <div class="error" id="nameError"></div>
+                <label for="siq">Файл .siq:</label>
+                <input type="file" id="siq" name="siq" accept=".siq" required>
+                <div class="error" id="fileError"></div>
             </div>
 
-            <div class="form-group">
-                <label for="photo">Фото игрока:</label>
-                <input type="file" id="photo" name="photo" accept="image/*" required>
-                <img id="imagePreview" class="image-preview" alt="Предпросмотр">
-                <div class="error" id="photoError"></div>
-            </div>
-
-            <input type="hidden" id="playerId" name="id">
-
-            <button type="submit" id="submitBtn">Присоединиться</button>
+            <button type="submit" id="submitBtn">Загрузить</button>
         </form>
     </div>
 
     <script>
-        // Получаем ID из URL параметра
-        const urlParams = new URLSearchParams(window.location.search);
-        const playerId = urlParams.get('id') || '1';
-        document.getElementById('playerId').value = playerId;
-
-        // Предпросмотр изображения
-        const photoInput = document.getElementById('photo');
-        const imagePreview = document.getElementById('imagePreview');
-
-        photoInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    imagePreview.src = e.target.result;
-                    imagePreview.classList.add('show');
-                };
-                reader.readAsDataURL(file);
-            } else {
-                imagePreview.classList.remove('show');
-            }
-        });
-
-        // Обработка отправки формы
-        const form = document.getElementById('joinForm');
+        const form = document.getElementById('uploadForm');
         const submitBtn = document.getElementById('submitBtn');
-        const nameError = document.getElementById('nameError');
-        const photoError = document.getElementById('photoError');
+        const fileError = document.getElementById('fileError');
 
-        form.addEventListener('submit', async function(e) {
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            // Сброс ошибок
-            nameError.classList.remove('show');
-            photoError.classList.remove('show');
+            fileError.textContent = '';
             submitBtn.disabled = true;
             submitBtn.textContent = 'Отправка...';
 
             const formData = new FormData();
-            formData.append('id', document.getElementById('playerId').value);
-            formData.append('name', document.getElementById('name').value);
-            
-            const photoFile = photoInput.files[0];
-            if (photoFile) {
-                formData.append('photo', photoFile);
+            const siqFile = document.getElementById('siq').files[0];
+
+            if (siqFile) {
+                formData.append('file', siqFile);
             }
 
             try {
-                const response = await fetch('http://localhost:8080/join', {
+                const response = await fetch('http://localhost:8080/upload', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (response.ok) {
-                    // Успешно отправлено, переходим на index.html
-                    window.location.href = `index.html?id=${playerId}`;
+                    alert('Файл загружен!');
                 } else {
-                    const errorText = await response.text();
-                    nameError.textContent = 'Ошибка: ' + errorText;
-                    nameError.classList.add('show');
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Присоединиться';
+                    fileError.textContent = 'Ошибка: ' + (await response.text());
                 }
-            } catch (error) {
-                nameError.textContent = 'Ошибка подключения к серверу';
-                nameError.classList.add('show');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Присоединиться';
+            } catch (err) {
+                fileError.textContent = 'Ошибка подключения.';
             }
+
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Загрузить';
         });
     </script>
+
 </body>
 </html>
 

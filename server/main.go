@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/goldenpineappleofthesun/siziph"
 )
 
 const (
@@ -94,6 +96,7 @@ func init() {
 
 func main() {
 	// Очищаем папку players при старте сервера
+	os.RemoveAll("package")
 	os.RemoveAll("players")
 	
 	// Создаем необходимые папки
@@ -206,58 +209,98 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	gameState.answeredQuestions = make(map[int]bool)
 	gameState.state = StateJoining
 
-	err := r.ParseMultipartForm(32 << 20) // 32 MB
-	if err != nil {
-		http.Error(w, "Error parsing multipart form", http.StatusBadRequest)
+	var siqBytes []byte
+	var err error
+
+	// Пробуем получить файл из multipart form (если есть)
+	if err := r.ParseMultipartForm(100 << 20); err == nil { // 100 MB
+		// Пробуем получить файл из поля "file" или "siq"
+		var file multipart.File
+		
+		if f, _, err := r.FormFile("file"); err == nil {
+			file = f
+		} else if f, _, err := r.FormFile("siq"); err == nil {
+			file = f
+		}
+		
+		if file != nil {
+			defer file.Close()
+			siqBytes, err = io.ReadAll(file)
+			if err != nil {
+				http.Error(w, "Error reading SIQ file", http.StatusBadRequest)
+				return
+			}
+		} else {
+			// Если multipart form есть, но файла нет, читаем из body
+			siqBytes, err = io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "Error reading SIQ file", http.StatusBadRequest)
+				return
+			}
+		}
+	} else {
+		// Если multipart form не удалось распарсить, читаем из body
+		siqBytes, err = io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Error reading SIQ file", http.StatusBadRequest)
+			return
+		}
+	}
+	defer r.Body.Close()
+
+	if len(siqBytes) == 0 {
+		http.Error(w, "No file provided", http.StatusBadRequest)
 		return
 	}
 
-	// Получаем JSON файл
-	jsonFile, _, err := r.FormFile("data")
+	// Создаем временный файл для SIQ
+	tmpFile, err := os.CreateTemp("", "upload_*.siq")
 	if err != nil {
-		http.Error(w, "Error reading JSON file", http.StatusBadRequest)
+		http.Error(w, "Error creating temporary file", http.StatusInternalServerError)
 		return
 	}
-	defer jsonFile.Close()
+	defer os.Remove(tmpFile.Name()) // Удаляем временный файл после использования
+	defer tmpFile.Close()
 
-	jsonBytes, err := io.ReadAll(jsonFile)
-	if err != nil {
-		http.Error(w, "Error reading JSON content", http.StatusBadRequest)
+	// Записываем SIQ данные во временный файл
+	if _, err := tmpFile.Write(siqBytes); err != nil {
+		http.Error(w, "Error writing temporary file", http.StatusInternalServerError)
 		return
+	}
+	tmpFile.Close()
+
+	// Извлекаем SIQ файл в папку package
+	if err := siziph.Extract(tmpFile.Name(), "package"); err != nil {
+		http.Error(w, fmt.Sprintf("Error extracting SIQ file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Загружаем content.json из извлеченного пакета
+	contentJsonPath := filepath.Join("package", "content.json")
+	jsonBytes, err := os.ReadFile(contentJsonPath)
+	if err != nil {
+		// Если content.json не найден, пробуем загрузить content.xml и преобразовать
+		contentXmlPath := filepath.Join("package", "content.xml")
+		if _, err := os.Stat(contentXmlPath); err == nil {
+			// siziph автоматически конвертирует XML в JSON, попробуем еще раз
+			jsonBytes, err = os.ReadFile(contentJsonPath)
+			if err != nil {
+				http.Error(w, "Error reading content.json after extraction", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			http.Error(w, "Error reading content.json: content.json not found", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	var packageJson map[string]interface{}
 	if err := json.Unmarshal(jsonBytes, &packageJson); err != nil {
-		http.Error(w, "Error parsing JSON", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("Error parsing content.json: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	gameState.packageJson = packageJson
-
-	// Сохраняем JSON файл
-	jsonPath := filepath.Join("package", "package.json")
-	if err := os.WriteFile(jsonPath, jsonBytes, 0644); err != nil {
-		http.Error(w, "Error saving JSON file", http.StatusInternalServerError)
-		return
-	}
-
-	// Получаем медиа файлы
-	files := r.MultipartForm.File["media"]
-	for _, fileHeader := range files {
-		file, err := fileHeader.Open()
-		if err != nil {
-			continue
-		}
-		defer file.Close()
-
-		dst, err := os.Create(filepath.Join("package", fileHeader.Filename))
-		if err != nil {
-			continue
-		}
-		defer dst.Close()
-
-		io.Copy(dst, file)
-	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Package uploaded successfully"))
@@ -508,7 +551,8 @@ func handleMedia(w http.ResponseWriter, r *http.Request) {
 
 	// Добавляем медиа из package
 	filepath.Walk("package", func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || filepath.Base(path) == "package.json" {
+		baseName := filepath.Base(path)
+		if err != nil || info.IsDir() || baseName == "package.json" || baseName == "content.json" || baseName == "content.xml" {
 			return nil
 		}
 		

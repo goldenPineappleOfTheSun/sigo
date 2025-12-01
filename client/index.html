@@ -1,36 +1,1301 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>ZIP Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Игра</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        #images img { width: 150px; margin: 10px; border: 1px solid #ccc; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 200px 1fr 300px;
+            grid-template-rows: 1fr auto;
+            height: 100vh;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        /* Левая зона - ведущий */
+        .host-zone {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .host-photo {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: 3px solid #fff;
+            object-fit: cover;
+        }
+
+        .host-name {
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .host-bubble {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            padding: 10px 15px;
+            border-radius: 15px;
+            min-height: 50px;
+            width: 100%;
+            font-size: 14px;
+            word-wrap: break-word;
+        }
+
+        /* Центральная зона */
+        .center-zone {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .center-zone.hidden {
+            display: none;
+        }
+
+        /* Таблица вопросов */
+        .question-table {
+            width: 100%;
+            height: 100%;
+            border-collapse: collapse;
+        }
+
+        .question-table th,
+        .question-table td {
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 15px;
+            text-align: center;
+        }
+
+        .question-table th {
+            background: rgba(255, 255, 255, 0.2);
+            font-weight: bold;
+        }
+
+        .question-table .theme-cell {
+            background: rgba(255, 255, 255, 0.15);
+            font-weight: bold;
+            text-align: left;
+        }
+
+        .question-table .question-cell {
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .question-table .question-cell:hover:not(.answered):not(.disabled) {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .question-table .question-cell.clickable {
+            cursor: pointer;
+        }
+
+        .question-table .question-cell.disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .question-table .question-cell.answered {
+            visibility: hidden;
+        }
+
+        .question-table .question-cell.selected {
+            animation: blink 0.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { background: rgba(255, 255, 255, 0.3); }
+            50% { background: rgba(255, 215, 0, 0.8); }
+        }
+
+        /* Медиа контент */
+        .media-content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .media-text {
+            font-size: 24px;
+            text-align: center;
+            padding: 20px;
+            max-width: 80%;
+        }
+
+        .media-image {
+            max-width: 90%;
+            max-height: 80%;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .media-video {
+            max-width: 90%;
+            max-height: 80%;
+            border-radius: 10px;
+        }
+
+        .media-audio {
+            font-size: 64px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .progress-bar {
+            width: 80%;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            width: 100%;
+            transition: width 0.1s linear;
+        }
+
+        .progress-bar-fill.frozen {
+            background: linear-gradient(90deg, #FF9800, #FFC107);
+        }
+
+        /* Правая зона - лог */
+        .log-zone {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            overflow-y: auto;
+            max-height: calc(100vh - 200px);
+        }
+
+        .log-entry {
+            padding: 8px;
+            margin-bottom: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            font-size: 12px;
+            word-wrap: break-word;
+        }
+
+        .answer-button {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .answer-button:hover:not(:disabled) {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .answer-button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* Нижняя зона - игроки */
+        .players-zone {
+            grid-column: 1 / -1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            max-height: 200px;
+        }
+
+        .player-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            padding: 10px;
+            min-width: 150px;
+            max-width: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+
+        .player-photo {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid #fff;
+            object-fit: cover;
+        }
+
+        .player-name {
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .player-score {
+            font-size: 20px;
+            font-weight: bold;
+            color: #FFD700;
+        }
+
+        .player-progress {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .player-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .player-progress-fill.frozen {
+            background: linear-gradient(90deg, #FF9800, #FFC107);
+        }
+
+        .player-bubble {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            padding: 5px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            min-height: 30px;
+            width: 100%;
+            word-wrap: break-word;
+        }
+
+        .player-answer-window {
+            position: absolute;
+            top: -80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            width: 250px;
+            display: none;
+            z-index: 100;
+        }
+
+        .player-answer-window.visible {
+            display: block;
+        }
+
+        .player-answer-input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 2px solid #4CAF50;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .player-answer-submit {
+            width: 100%;
+            padding: 8px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .player-answer-submit:hover {
+            background: #45a049;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 24px;
+            padding: 50px;
+        }
+
+        .disabled-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .disabled-overlay.visible {
+            display: flex;
+        }
     </style>
 </head>
 <body>
+    <div class="disabled-overlay" id="disabledOverlay">
+        <div>Загрузка медиа...</div>
+    </div>
+
+    <div class="container">
+        <!-- Левая зона - ведущий -->
+        <div class="host-zone">
+            <img src="" alt="Ведущий" class="host-photo" id="hostPhoto">
+            <div class="host-name" id="hostName">Ведущий</div>
+            <div class="host-bubble" id="hostBubble"></div>
+        </div>
+
+        <!-- Центральная зона -->
+        <div class="center-zone" id="centerZone">
+            <div class="loading">Загрузка...</div>
+        </div>
+
+        <!-- Правая зона - лог -->
+        <div class="log-zone" id="logZone"></div>
+    </div>
+
+    <!-- Кнопка ответить -->
+    <button class="answer-button" id="answerButton" disabled>Ответить</button>
+
+    <!-- Нижняя зона - игроки -->
+    <div class="players-zone" id="playersZone"></div>
 
 <script>
-    async function test() {
-        console.log("Downloading ZIP...");
-        const response = await fetch("http://localhost:8080/media"); // <-- replace if needed
-        const zipBlob = await response.blob();
+        // Глобальные переменные
+        const urlParams = new URLSearchParams(window.location.search);
+        const playerId = parseInt(urlParams.get('id')) || 1;
+        
+        // Словари для медиа файлов
+        let files = {}; // path: Blob
+        let urls = {};  // path: URL string
+        
+        // Функция для получения URL сервера
+        function getServerUrl() {
+            return 'http://localhost:8080';
+        }
 
-        console.log("ZIP downloaded. Extracting...");
+        // Состояние игры
+        let gameData = {
+            packageJson: null,
+            players: [],
+            mediaZip: null,
+            currentPlayerId: null,
+            answeredQuestions: new Set(),
+            selectedQuestionId: null,
+            canAnswerTime: null,
+            answerTimer: null,
+            progressTimer: null,
+            questionStartTime: null,
+            questionDuration: 60000, // 60 секунд по умолчанию
+            ws: null,
+            questionsCache: null
+        };
 
-        const zip = processZip(zipBlob)
+        // Инициализация
+        async function init() {
+            document.getElementById('disabledOverlay').classList.add('visible');
+            
+            try {
+                // Загружаем данные
+                await Promise.all([
+                    loadData(),
+                    loadMedia()
+                ]);
+                
+                // Подключаемся к WebSocket
+                connectWebSocket();
+                
+                document.getElementById('disabledOverlay').classList.remove('visible');
+            } catch (error) {
+                console.error('Ошибка инициализации:', error);
+                addLog('Ошибка загрузки данных');
+            }
+        }
 
-        console.log(Object.keys(zip));
-        alert("All files extracted!");
-    }
+        // Загрузка данных
+        async function loadData() {
+            const response = await fetch(`${getServerUrl()}/data`);
+            const data = await response.json();
+            gameData.packageJson = data.packageJson;
+            gameData.players = data.players;
+            gameData.questionsCache = null; // Сброс кэша при новой загрузке
+            updatePlayers();
+        }
 
-    async function processZip(file) {
-        return await JSZip.loadAsync(file);
-    }
+        // Загрузка медиа
+        async function loadMedia() {
+            const response = await fetch(`${getServerUrl()}/media`);
+            const zipBlob = await response.blob();
+            gameData.mediaZip = await processZip(zipBlob);
+        }
 
-    document.getElementById("loadBtn").onclick = test;
-</script>
+        // Обработка ZIP
+        async function processZip(file) {
+            const zip = await JSZip.loadAsync(file);
+            
+            // Инициализируем словари files и urls
+            files = {};
+            urls = {};
+            
+            // Обрабатываем все файлы в ZIP
+            for (const [path, zipFile] of Object.entries(zip.files)) {
+                if (!zipFile.dir) {
+                    // Конвертируем файл в Blob
+                    const blob = await zipFile.async('blob');
+                    files[path] = blob;
+                    
+                    // Создаем URL для Blob
+                    urls[path] = URL.createObjectURL(blob);
+                }
+            }
+            
+            return zip;
+        }
 
+        // Функция для сопоставления медиа из вопроса с ZIP
+        function getMediaUrl(mediaPath) {
+            if (!mediaPath) return null;
+            
+            // Ищем файл в словаре urls (может быть в разных папках)
+            const normalizedPath = mediaPath.replace(/^@/, '').replace(/\\/g, '/');
+            
+            // Пробуем разные варианты путей
+            const possiblePaths = [
+                `questions/${normalizedPath}`,
+                `questions/Audio/${normalizedPath}`,
+                `questions/Images/${normalizedPath}`,
+                `questions/Video/${normalizedPath}`,
+                normalizedPath,
+                `Audio/${normalizedPath}`,
+                `Images/${normalizedPath}`,
+                `Video/${normalizedPath}`
+            ];
+
+            for (const path of possiblePaths) {
+                if (urls[path]) {
+                    return urls[path];
+                }
+            }
+            
+            return null;
+        }
+
+        // Функция для сопоставления ID игрока с аватаркой
+        function getPlayerAvatar(playerId) {
+            // Пробуем разные расширения
+            const extensions = ['.jpg', '.jpeg', '.png', '.gif'];
+            for (const ext of extensions) {
+                const path = `players/${playerId}${ext}`;
+                if (urls[path]) {
+                    return urls[path];
+                }
+            }
+            
+            return null;
+        }
+
+        // Обновление списка игроков
+        function updatePlayers() {
+            const playersZone = document.getElementById('playersZone');
+            playersZone.innerHTML = '';
+            
+            gameData.players.slice(0, 5).forEach(player => {
+                const playerCard = document.createElement('div');
+                playerCard.className = 'player-card';
+                playerCard.id = `player-${player.id}`;
+                
+                const avatarUrl = getPlayerAvatar(player.id) || '';
+                
+                playerCard.innerHTML = `
+                    <img src="${avatarUrl}" alt="${player.name}" class="player-photo" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27100%27 height=%27100%27%3E%3Crect width=%27100%27 height=%27100%27 fill=%27%23ccc%27/%3E%3Ctext x=%2750%27 y=%2750%27 text-anchor=%27middle%27 dy=%27.3em%27 fill=%27%23999%27%3E${player.name[0]}%3C/text%3E%3C/svg%3E'">
+                    <div class="player-name">${player.name}</div>
+                    <div class="player-score" id="score-${player.id}">0</div>
+                    <div class="player-progress">
+                        <div class="player-progress-fill" id="progress-${player.id}"></div>
+                    </div>
+                    <div class="player-bubble" id="bubble-${player.id}"></div>
+                    <div class="player-answer-window" id="answer-window-${player.id}">
+                        <input type="text" class="player-answer-input" id="answer-input-${player.id}" placeholder="Ваш ответ" onkeypress="if(event.key==='Enter') submitAnswer(${player.id})">
+                        <button class="player-answer-submit" onclick="submitAnswer(${player.id})">Отправить</button>
+                    </div>
+                `;
+                
+                playersZone.appendChild(playerCard);
+            });
+            
+            updateScores();
+        }
+
+        // Обновление очков
+        async function updateScores() {
+            try {
+                const response = await fetch(`${getServerUrl()}/scores`);
+                const scores = await response.json();
+                
+                scores.forEach(score => {
+                    const scoreEl = document.getElementById(`score-${score.id}`);
+                    if (scoreEl) {
+                        scoreEl.textContent = score.score;
+                    }
+                });
+            } catch (error) {
+                console.error('Ошибка обновления очков:', error);
+            }
+        }
+
+        // Подключение к WebSocket
+        function connectWebSocket() {
+            const wsUrl = getServerUrl().replace('http', 'ws');
+            gameData.ws = new WebSocket(`${wsUrl}/ws`);
+            
+            gameData.ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            };
+            
+            gameData.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addLog('Ошибка подключения');
+            };
+            
+            gameData.ws.onclose = () => {
+                addLog('Соединение закрыто');
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        // Обработка сообщений WebSocket
+        function handleWebSocketMessage(message) {
+            addLog(`Получено: ${message.type}`);
+            
+            switch (message.type) {
+                case 'questionstable':
+                    handleMainTable(message.table);
+                    break;
+                case 'questionselected':
+                    handleQuestionSelected(message.id);
+                    break;
+                case 'showquestion':
+                    handleShowQuestion(message.id, message.time);
+                    break;
+                case 'cananswer':
+                    handleCanAnswer(message.timestamp);
+                    break;
+                case 'waitanswer':
+                    handleWaitAnswer(message.playerId);
+                    break;
+                case 'validated':
+                    handleValidated(message.idQuest, message.idPlayer, message.result);
+                    break;
+                case 'showanswer':
+                    handleShowAnswer(message.questId);
+                    break;
+                case 'showmantalk':
+                    showmanTalk(message.text);
+                    break;
+                case 'playertalk':
+                    playerTalk(message.playerId, message.text);
+                    break;
+            }
+        }
+
+        // Обработка maintable (questionstable)
+        function handleMainTable(tableText) {
+            const formattedData = parseTableText(tableText);
+            redrawQuestionTable(formattedData);
+            checkCurrentPlayer();
+        }
+
+        // Парсинг текста таблицы
+        function parseTableText(text) {
+            const lines = text.split('\n');
+            const themes = [];
+            let currentTheme = null;
+            
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed === 'Темы:') continue;
+                
+                if (trimmed.endsWith(':')) {
+                    // Новая тема
+                    if (currentTheme) themes.push(currentTheme);
+                    currentTheme = {
+                        name: trimmed.slice(0, -1),
+                        questions: []
+                    };
+                } else if (trimmed.startsWith('[') && currentTheme) {
+                    // Вопрос
+                    const match = trimmed.match(/\[(\d+)\]\s*(.+)/);
+                    if (match) {
+                        const id = parseInt(match[1]);
+                        const price = match[2].trim();
+                        if (price !== '---') {
+                            currentTheme.questions.push({
+                                id: id,
+                                price: price
+                            });
+                        } else {
+                            gameData.answeredQuestions.add(id);
+                        }
+                    }
+                }
+            }
+            
+            if (currentTheme) themes.push(currentTheme);
+            return themes;
+        }
+
+        // Перерисовка таблицы вопросов
+        function redrawQuestionTable(themes) {
+            const centerZone = document.getElementById('centerZone');
+            centerZone.className = 'center-zone';
+            
+            if (themes.length === 0) {
+                centerZone.innerHTML = '<div class="loading">Нет вопросов</div>';
+                return;
+            }
+            
+            // Находим максимальное количество вопросов в теме
+            const maxQuestions = Math.max(...themes.map(t => t.questions.length));
+            
+            let html = '<table class="question-table"><thead><tr><th>Тема</th>';
+            for (let i = 0; i < maxQuestions; i++) {
+                html += '<th></th>';
+            }
+            html += '</tr></thead><tbody>';
+            
+            themes.forEach(theme => {
+                html += `<tr><td class="theme-cell">${theme.name}</td>`;
+                for (let i = 0; i < maxQuestions; i++) {
+                    if (i < theme.questions.length) {
+                        const q = theme.questions[i];
+                        const answered = gameData.answeredQuestions.has(q.id);
+                        const selected = gameData.selectedQuestionId === q.id;
+                        html += `<td class="question-cell ${answered ? 'answered' : ''} ${selected ? 'selected' : ''}" 
+                            data-question-id="${q.id}" 
+                            ${answered ? '' : 'onclick="selectQuestion(' + q.id + ')"'}>${q.price}</td>`;
+                    } else {
+                        html += '<td></td>';
+                    }
+                }
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            centerZone.innerHTML = html;
+        }
+
+        // Проверка текущего игрока
+        async function checkCurrentPlayer() {
+            try {
+                const response = await fetch(`${getServerUrl()}/currentplayer`);
+                const currentPlayerId = parseInt(await response.text());
+                gameData.currentPlayerId = currentPlayerId;
+                
+                if (currentPlayerId === playerId) {
+                    enableQuestionButtons();
+                } else {
+                    disableQuestionButtons();
+                }
+            } catch (error) {
+                console.error('Ошибка проверки текущего игрока:', error);
+            }
+        }
+
+        // Включение кнопок вопросов
+        function enableQuestionButtons() {
+            document.querySelectorAll('.question-cell').forEach(cell => {
+                if (!cell.classList.contains('answered')) {
+                    cell.classList.add('clickable');
+                    cell.classList.remove('disabled');
+                }
+            });
+        }
+
+        // Отключение кнопок вопросов
+        function disableQuestionButtons() {
+            document.querySelectorAll('.question-cell').forEach(cell => {
+                cell.classList.remove('clickable');
+                cell.classList.add('disabled');
+            });
+        }
+
+        // Выбор вопроса
+        async function selectQuestion(questionId) {
+            disableQuestionButtons();
+            gameData.selectedQuestionId = questionId;
+            
+            // Подсветка выбранного вопроса
+            document.querySelectorAll('.question-cell').forEach(cell => {
+                cell.classList.remove('selected');
+                if (parseInt(cell.dataset.questionId) === questionId) {
+                    cell.classList.add('selected');
+                }
+            });
+            
+            try {
+                const formData = new URLSearchParams();
+                formData.append('idQuest', questionId);
+                formData.append('idPlayer', playerId);
+                
+                await fetch(`${getServerUrl()}/selectquestion`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (error) {
+                console.error('Ошибка выбора вопроса:', error);
+            }
+        }
+
+        // Обработка questionselected
+        function handleQuestionSelected(questionId) {
+            document.getElementById('centerZone').classList.add('hidden');
+        }
+
+        // Обработка showquestion
+        async function handleShowQuestion(questionId, startTime) {
+            // Отправляем acknowledge
+            try {
+                const formData = new URLSearchParams();
+                formData.append('id', playerId);
+                await fetch(`${getServerUrl()}/acknowledge`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (error) {
+                console.error('Ошибка acknowledge:', error);
+            }
+            
+            // Устанавливаем таймаут
+            const delay = startTime - Date.now();
+            if (delay > 0) {
+                setTimeout(() => {
+                    showQuestion(questionId, 0);
+                }, delay);
+            } else {
+                showQuestion(questionId, 0);
+            }
+        }
+
+        // Показ вопроса
+        async function showQuestion(questionId, mediaIndex) {
+            const centerZone = document.getElementById('centerZone');
+            centerZone.classList.remove('hidden');
+            
+            // Находим вопрос в данных
+            const question = findQuestionById(questionId);
+            if (!question) {
+                centerZone.innerHTML = '<div class="loading">Вопрос не найден</div>';
+                return;
+            }
+            
+            // Получаем медиа для вопроса
+            const mediaItems = getQuestionMedia(question);
+            
+            if (mediaIndex < mediaItems.length) {
+                const media = mediaItems[mediaIndex];
+                displayMedia(media);
+                
+                // Если есть еще медиа, показываем следующее
+                if (mediaIndex + 1 < mediaItems.length) {
+                    setTimeout(() => {
+                        showQuestion(questionId, mediaIndex + 1);
+                    }, 2000); // 2 секунды между медиа
+                } else {
+                    // Все медиа показаны, отправляем questionbeenshown
+                    try {
+                        const formData = new URLSearchParams();
+                        formData.append('playerId', playerId);
+                        await fetch(`${getServerUrl()}/questionbeenshown`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                    } catch (error) {
+                        console.error('Ошибка questionbeenshown:', error);
+                    }
+                }
+            }
+        }
+
+        // Поиск вопроса по ID
+        function findQuestionById(questionId) {
+            if (!gameData.packageJson || !gameData.packageJson.rounds) return null;
+            
+            // Используем кэш вопросов для быстрого поиска
+            if (!gameData.questionsCache) {
+                gameData.questionsCache = new Map();
+                buildQuestionsCache();
+            }
+            
+            return gameData.questionsCache.get(questionId) || null;
+        }
+
+        // Построение кэша вопросов
+        function buildQuestionsCache() {
+            gameData.questionsCache = new Map();
+            let questionCounter = 1;
+            
+            if (!gameData.packageJson || !gameData.packageJson.rounds) return;
+            
+            for (const round of gameData.packageJson.rounds) {
+                const roundData = Array.isArray(round.round) ? round.round[0] : round;
+                if (!roundData || !roundData.themes) continue;
+                
+                const themes = Array.isArray(roundData.themes) ? roundData.themes : [roundData.themes];
+                for (const themeData of themes) {
+                    const theme = Array.isArray(themeData.theme) ? themeData.theme[0] : themeData;
+                    if (!theme || !theme.questions) continue;
+                    
+                    const questions = Array.isArray(theme.questions) ? theme.questions : [theme.questions];
+                    for (const qData of questions) {
+                        const q = Array.isArray(qData.question) ? qData.question[0] : qData;
+                        if (!q) continue;
+                        
+                        // Пробуем найти ID в разных местах
+                        let qId = q['@id'] || q.id;
+                        
+                        // Если ID нет, используем счетчик (как fallback)
+                        if (!qId) {
+                            qId = questionCounter++;
+                        }
+                        
+                        const idNum = parseInt(qId);
+                        if (!isNaN(idNum)) {
+                            gameData.questionsCache.set(idNum, q);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Получение медиа из вопроса
+        function getQuestionMedia(question) {
+            const media = [];
+            
+            if (!question.params) return media;
+            
+            const params = Array.isArray(question.params) ? question.params : [question.params];
+            for (const paramGroup of params) {
+                const paramList = Array.isArray(paramGroup.param) ? paramGroup.param : [paramGroup.param];
+                for (const param of paramList) {
+                    if (!param || !param.item) continue;
+                    
+                    // Проверяем имя параметра - нас интересует только "question"
+                    if (param['@name'] !== 'question') continue;
+                    
+                    const items = Array.isArray(param.item) ? param.item : [param.item];
+                    for (const item of items) {
+                        if (typeof item === 'string') {
+                            // Простой текст
+                            media.push({ type: 'text', content: item });
+                        } else if (item['#text'] !== undefined) {
+                            const text = item['#text'];
+                            const type = item['@type'];
+                            const isRef = item['@isRef'] === 'True' || item['@isRef'] === true;
+                            
+                            if (isRef && type) {
+                                // Это ссылка на медиа файл
+                                if (type === 'image' || text.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                                    media.push({ type: 'image', content: text });
+                                } else if (type === 'video' || text.match(/\.(mp4|avi|mov|webm)$/i)) {
+                                    media.push({ type: 'video', content: text });
+                                } else if (type === 'audio' || text.match(/\.(mp3|wav|ogg)$/i)) {
+                                    media.push({ type: 'audio', content: text });
+                                } else {
+                                    media.push({ type: 'text', content: text });
+                                }
+                            } else {
+                                // Обычный текст
+                                media.push({ type: 'text', content: text });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return media;
+        }
+
+        // Отображение медиа
+        function displayMedia(media) {
+            const centerZone = document.getElementById('centerZone');
+            let html = '<div class="media-content">';
+            
+            switch (media.type) {
+                case 'text':
+                    html += `<div class="media-text">${media.content}</div>`;
+                    break;
+                case 'image':
+                    const imageUrl = getMediaUrl(media.content);
+                    if (imageUrl) {
+                        html += `<img src="${imageUrl}" alt="Image" class="media-image">`;
+                    } else {
+                        html += `<div class="media-text">Изображение: ${media.content}</div>`;
+                    }
+                    break;
+                case 'video':
+                    const videoUrl = getMediaUrl(media.content);
+                    if (videoUrl) {
+                        html += `<video src="${videoUrl}" controls class="media-video"></video>`;
+                    } else {
+                        html += `<div class="media-text">Видео: ${media.content}</div>`;
+                    }
+                    break;
+                case 'audio':
+                    html += `<div class="media-audio">🎵</div>`;
+                    const audioUrl = getMediaUrl(media.content);
+                    if (audioUrl) {
+                        html += `<audio src="${audioUrl}" autoplay></audio>`;
+                    }
+                    break;
+            }
+            
+            html += '</div>';
+            centerZone.innerHTML = html;
+        }
+
+        // Обработка cananswer
+        function handleCanAnswer(timestamp) {
+            gameData.canAnswerTime = timestamp;
+            const delay = timestamp - Date.now();
+            
+            if (delay > 0) {
+                setTimeout(() => {
+                    enableAnswerButton();
+                    startAnswerTimer();
+                }, delay);
+            } else {
+                enableAnswerButton();
+                startAnswerTimer();
+            }
+        }
+
+        // Включение кнопки ответить
+        function enableAnswerButton() {
+            const button = document.getElementById('answerButton');
+            button.disabled = false;
+        }
+
+        // Отключение кнопки ответить
+        function disableAnswerButton() {
+            const button = document.getElementById('answerButton');
+            button.disabled = true;
+        }
+
+        // Запуск таймера ответа
+        function startAnswerTimer() {
+            if (gameData.progressTimer) {
+                clearInterval(gameData.progressTimer);
+            }
+            
+            if (!gameData.questionStartTime) {
+                gameData.questionStartTime = Date.now();
+            }
+            
+            const duration = gameData.questionDuration;
+            
+            gameData.progressTimer = setInterval(() => {
+                const elapsed = Date.now() - gameData.questionStartTime;
+                const remaining = Math.max(0, duration - elapsed);
+                const percentage = (remaining / duration) * 100;
+                
+                // Обновляем прогресс-бары всех игроков
+                document.querySelectorAll('.player-progress-fill').forEach(bar => {
+                    bar.style.width = percentage + '%';
+                });
+                
+                if (remaining === 0) {
+                    clearInterval(gameData.progressTimer);
+                    disableAnswerButton();
+                }
+            }, 100);
+        }
+
+        // Заморозка таймера
+        function freezeTimer() {
+            if (gameData.progressTimer) {
+                clearInterval(gameData.progressTimer);
+                gameData.progressTimer = null;
+            }
+            document.querySelectorAll('.player-progress-fill').forEach(bar => {
+                bar.classList.add('frozen');
+            });
+        }
+
+        // Разморозка таймера
+        function unfreezeTimer() {
+            document.querySelectorAll('.player-progress-fill').forEach(bar => {
+                bar.classList.remove('frozen');
+            });
+            // Восстанавливаем время начала с учетом заморозки
+            if (gameData.questionStartTime) {
+                const elapsed = Date.now() - gameData.questionStartTime;
+                gameData.questionStartTime = Date.now() - elapsed;
+            }
+            startAnswerTimer();
+        }
+
+        // Обработка waitanswer
+        function handleWaitAnswer(waitingPlayerId) {
+            freezeTimer();
+            
+            if (waitingPlayerId === playerId) {
+                showAnswerWindow();
+            }
+        }
+
+        // Показ окна ответа
+        function showAnswerWindow() {
+            const window = document.getElementById(`answer-window-${playerId}`);
+            if (window) {
+                window.classList.add('visible');
+                const input = document.getElementById(`answer-input-${playerId}`);
+                if (input) input.focus();
+            }
+        }
+
+        // Скрытие окна ответа
+        function hideAnswerWindow() {
+            const window = document.getElementById(`answer-window-${playerId}`);
+            if (window) {
+                window.classList.remove('visible');
+            }
+        }
+
+        // Отправка ответа
+        async function submitAnswer(playerId) {
+            const input = document.getElementById(`answer-input-${playerId}`);
+            const answerText = input ? input.value.trim() : '';
+            
+            if (!answerText) return; // Не отправляем пустой ответ
+            
+            hideAnswerWindow();
+            
+            if (input) {
+                input.value = ''; // Очищаем поле
+            }
+            
+            try {
+                const formData = new URLSearchParams();
+                formData.append('id-quest', gameData.selectedQuestionId);
+                formData.append('id-player', playerId);
+                formData.append('text', answerText);
+                
+                await fetch(`${getServerUrl()}/answer`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (error) {
+                console.error('Ошибка отправки ответа:', error);
+            }
+        }
+
+        // Обработка validated
+        function handleValidated(idQuest, idPlayer, result) {
+            if (result) {
+                // Правильный ответ
+                freezeTimer();
+                disableAnswerButton();
+                gameData.answeredQuestions.add(idQuest);
+                updateScores();
+            } else {
+                // Неправильный ответ
+                if (idPlayer === playerId) {
+                    disableAnswerButton();
+                } else {
+                    unfreezeTimer();
+                }
+            }
+        }
+
+        // Обработка showanswer
+        async function handleShowAnswer(questId) {
+            const answer = findAnswerById(questId);
+            if (answer) {
+                await displayAnswer(answer);
+            }
+        }
+
+        // Поиск ответа по ID вопроса
+        function findAnswerById(questionId) {
+            const question = findQuestionById(questionId);
+            if (!question) return null;
+            
+            const media = [];
+            
+            // Ищем ответ в структуре вопроса
+            if (question.right) {
+                const rightData = Array.isArray(question.right) ? question.right[0] : question.right;
+                if (rightData && rightData.answer) {
+                    const answerData = Array.isArray(rightData.answer) ? answerData.answer[0] : rightData.answer;
+                    if (answerData && answerData['#text']) {
+                        media.push({ type: 'text', content: answerData['#text'] });
+                    }
+                }
+            }
+            
+            // Также проверяем params с именем "answer"
+            if (question.params) {
+                const params = Array.isArray(question.params) ? question.params : [question.params];
+                for (const paramGroup of params) {
+                    const paramList = Array.isArray(paramGroup.param) ? paramGroup.param : [paramGroup.param];
+                    for (const param of paramList) {
+                        if (param && param['@name'] === 'answer' && param.item) {
+                            const items = Array.isArray(param.item) ? param.item : [param.item];
+                            for (const item of items) {
+                                if (typeof item === 'string') {
+                                    media.push({ type: 'text', content: item });
+                                } else if (item['#text'] !== undefined) {
+                                    const text = item['#text'];
+                                    const type = item['@type'];
+                                    const isRef = item['@isRef'] === 'True' || item['@isRef'] === true;
+                                    
+                                    if (isRef && type) {
+                                        if (type === 'image' || text.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                                            media.push({ type: 'image', content: text });
+                                        } else if (type === 'video' || text.match(/\.(mp4|avi|mov|webm)$/i)) {
+                                            media.push({ type: 'video', content: text });
+                                        } else {
+                                            media.push({ type: 'text', content: text });
+                                        }
+                                    } else {
+                                        media.push({ type: 'text', content: text });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return media.length > 0 ? media : null;
+        }
+
+        // Отображение ответа
+        async function displayAnswer(mediaItems) {
+            const centerZone = document.getElementById('centerZone');
+            centerZone.classList.remove('hidden');
+            
+            if (mediaItems && mediaItems.length > 0) {
+                for (let i = 0; i < mediaItems.length; i++) {
+                    displayMedia(mediaItems[i]);
+                    if (i < mediaItems.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                }
+            } else {
+                centerZone.innerHTML = '<div class="loading">Ответ</div>';
+            }
+        }
+
+        // Реплика ведущего
+        function showmanTalk(text) {
+            document.getElementById('hostBubble').textContent = text;
+            addLog(`Ведущий: ${text}`);
+        }
+
+        // Реплика игрока
+        function playerTalk(playerId, text) {
+            const bubble = document.getElementById(`bubble-${playerId}`);
+            if (bubble) {
+                bubble.textContent = text;
+            }
+            addLog(`Игрок ${playerId}: ${text}`);
+        }
+
+        // Добавление в лог
+        function addLog(message) {
+            const logZone = document.getElementById('logZone');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logZone.appendChild(entry);
+            logZone.scrollTop = logZone.scrollHeight;
+        }
+
+        // Обработка кнопки ответить
+        document.getElementById('answerButton').addEventListener('click', async () => {
+            const button = document.getElementById('answerButton');
+            if (button.disabled) return;
+            
+            disableAnswerButton();
+            
+            try {
+                const formData = new URLSearchParams();
+                formData.append('id', playerId);
+                formData.append('timestamp', Date.now().toString());
+                
+                await fetch(`${getServerUrl()}/requestanswer`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (error) {
+                console.error('Ошибка requestanswer:', error);
+            }
+        });
+
+        // Инициализация при загрузке
+        window.addEventListener('load', init);
+    </script>
 </body>
 </html>

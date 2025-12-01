@@ -115,6 +115,7 @@ func main() {
 	http.Handle("/upload",           withCORS(http.HandlerFunc(handleUpload)))
 	http.Handle("/join",             withCORS(http.HandlerFunc(handleJoin)))
 	http.Handle("/joinnpc",          withCORS(http.HandlerFunc(handleJoinNPC)))
+	http.Handle("/joinshowman",      withCORS(http.HandlerFunc(handleJoinShowman)))
 	http.Handle("/npccharacters",    withCORS(http.HandlerFunc(handleNPCCharacters)))
 	http.Handle("/state",            withCORS(http.HandlerFunc(handleState)))
 	http.Handle("/scores",           withCORS(http.HandlerFunc(handleScores)))
@@ -424,6 +425,74 @@ func handleJoinNPC(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(fmt.Sprintf("NPC joined with id %d", id)))
+}
+
+func handleJoinShowman(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	characterName := r.FormValue("character")
+	if characterName == "" {
+		http.Error(w, "Missing character", http.StatusBadRequest)
+		return
+	}
+
+	// Ищем персонажа по имени
+	npcChar, exists := npcCharactersMap[strings.ToLower(characterName)]
+	if !exists {
+		http.Error(w, "Character not found", http.StatusNotFound)
+		return
+	}
+
+	gameState.mu.Lock()
+	defer gameState.mu.Unlock()
+
+	if gameState.state != StateJoining {
+		http.Error(w, "Game is not in joining state", http.StatusBadRequest)
+		return
+	}
+
+	// Всегда используем ID 1000 для ведущего
+	id := 1000
+
+	// Удаляем предыдущего игрока с ID 1000, если он существует
+	if _, exists := gameState.players[id]; exists {
+		// Удаляем фото предыдущего игрока, если оно есть
+		extensions := []string{".jpg", ".jpeg", ".png", ".gif"}
+		for _, ext := range extensions {
+			photoPath := filepath.Join("players", fmt.Sprintf("%d%s", id, ext))
+			os.Remove(photoPath)
+		}
+		delete(gameState.players, id)
+	}
+
+	// Копируем фото из папки npc_characters в папку players
+	sourcePhoto := filepath.Join("npc_characters", npcChar.Photo)
+	destPhoto := filepath.Join("players", fmt.Sprintf("%d%s", id, filepath.Ext(npcChar.Photo)))
+	
+	if err := copyFile(sourcePhoto, destPhoto); err != nil {
+		log.Printf("Warning: Failed to copy showman photo: %v", err)
+		// Продолжаем даже если не удалось скопировать фото
+	}
+
+	gameState.players[id] = &Player{
+		ID:           id,
+		Name:         npcChar.Name,
+		Score:        0,
+		IsNPC:        true,
+		NPCCharacter: npcChar,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("Showman joined with id %d", id)))
 }
 
 func handleNPCCharacters(w http.ResponseWriter, r *http.Request) {

@@ -24,7 +24,7 @@
             display: grid;
             grid-template-columns: 200px 1fr 300px;
             grid-template-rows: 1fr auto;
-            height: 100vh;
+            height: 70vh;
             gap: 10px;
             padding: 10px;
         }
@@ -258,7 +258,7 @@
             display: flex;
             gap: 15px;
             justify-content: center;
-            max-height: 200px;
+            max-height: 30vh;
         }
 
         .player-card {
@@ -491,6 +491,36 @@
             gameData.mediaZip = await processZip(zipBlob);
         }
 
+        // Обработка сообщения start от сервера
+        async function handleStart() {
+            addLog('Начало игры - загрузка ресурсов...');
+            
+            try {
+                // Загружаем данные и медиа
+                await Promise.all([
+                    loadData(),
+                    loadMedia()
+                ]);
+                
+                // Обновляем панель ведущего
+                document.querySelector('.host-photo').setAttribute('src', getPlayerAvatar(1000));
+                
+                // Отправляем подтверждение
+                const formData = new URLSearchParams();
+                formData.append('id', playerId);
+                
+                await fetch(`${getServerUrl()}/startacknowledge`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                addLog('Подтверждение начала игры отправлено');
+            } catch (error) {
+                console.error('Ошибка при обработке начала игры:', error);
+                addLog('Ошибка при обработке начала игры');
+            }
+        }
+
         // Обработка ZIP
         async function processZip(file) {
             const zip = await JSZip.loadAsync(file);
@@ -560,7 +590,7 @@
             const playersZone = document.getElementById('playersZone');
             playersZone.innerHTML = '';
             
-            gameData.players.slice(0, 5).forEach(player => {
+            gameData.players.filter(x => x.id < 1000).slice(0, 5).forEach(player => {
                 const playerCard = document.createElement('div');
                 playerCard.className = 'player-card';
                 playerCard.id = `player-${player.id}`;
@@ -630,6 +660,9 @@
             addLog(`Получено: ${message.type}`);
             
             switch (message.type) {
+                case 'start': 
+                    handleStart();
+                    break;
                 case 'questionstable':
                     handleMainTable(message.table);
                     break;

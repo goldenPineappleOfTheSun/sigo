@@ -76,6 +76,7 @@ type Theme struct {
 var gameState *GameState
 var npcCharacters []NPCCharacter
 var npcCharactersMap map[string]*NPCCharacter // Для быстрого поиска по имени
+var acknowledgeWaitStarted bool
 
 func init() {
 	gameState = &GameState{
@@ -124,6 +125,7 @@ func main() {
 	http.Handle("/currentplayer",    withCORS(http.HandlerFunc(handleCurrentPlayer)))
 	http.Handle("/playerstate",      withCORS(http.HandlerFunc(handlePlayerState)))
 	http.Handle("/start",            withCORS(http.HandlerFunc(handleStart)))
+	http.Handle("/startacknowledge", withCORS(http.HandlerFunc(handleStartAcknowledge)))
 	http.Handle("/selectquestion",   withCORS(http.HandlerFunc(handleSelectQuestion)))
 	http.Handle("/acknowledge",      withCORS(http.HandlerFunc(handleAcknowledge)))
 	http.Handle("/questionbeenshown",withCORS(http.HandlerFunc(handleQuestionBeenShown)))
@@ -723,6 +725,7 @@ type GameStateInternal struct {
 	acknowledgesReceived    map[int]bool
 	questionShownReceived   map[int]bool
 	requestAnswerReceived   map[int]int64 // playerId -> timestamp
+	startAcknowledgeReceived map[int]bool
 	selectedQuestionId      int
 	selectedQuestionTime    time.Time
 	canAnswerTimestamp      int64
@@ -730,12 +733,14 @@ type GameStateInternal struct {
 	acknowledgeTimeout      *time.Timer
 	questionShownTimeout    *time.Timer
 	showAnswerTimeout       *time.Timer
+	startAcknowledgeTimeout *time.Timer
 }
 
 var gameStateInternal = &GameStateInternal{
-	acknowledgesReceived:  make(map[int]bool),
-	questionShownReceived: make(map[int]bool),
-	requestAnswerReceived: make(map[int]int64),
+	acknowledgesReceived:     make(map[int]bool),
+	questionShownReceived:    make(map[int]bool),
+	requestAnswerReceived:    make(map[int]int64),
+	startAcknowledgeReceived: make(map[int]bool),
 }
 
 func handleStart(w http.ResponseWriter, r *http.Request) {
@@ -766,18 +771,23 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	gameState.currentPlayerId = playerIds[time.Now().UnixNano()%int64(len(playerIds))]
 	gameState.roundNum = 1
 	gameState.gameStartTime = time.Now().UTC()
-	gameState.state = StateSelectQuestion
+	
+	// Инициализируем карту подтверждений для старта
+	gameStateInternal.startAcknowledgeReceived = make(map[int]bool)
+	
+	// Отправляем сообщение start и ждем подтверждений
+	gameState.broadcastMessage("start", map[string]interface{}{})
 
-	// Отправляем таблицу вопросов
-	table := getQuestionsTable(gameState.roundNum)
-	gameState.broadcastMessage("questionstable", map[string]interface{}{
-		"table": table,
-	})
-
-	// Если текущий игрок - NPC, обрабатываем его ход
-	if player := gameState.players[gameState.currentPlayerId]; player != nil && player.IsNPC {
-		go handleNPCTurn()
+	// Таймаут для startacknowledge
+	if gameStateInternal.startAcknowledgeTimeout != nil {
+		gameStateInternal.startAcknowledgeTimeout.Stop()
 	}
+	gameStateInternal.startAcknowledgeTimeout = time.AfterFunc(10*time.Second, func() {
+		gameState.mu.Lock()
+		log.Printf("Game started!")
+		transitionToSelectQuestionAfterStart()
+		gameState.mu.Unlock()
+	})
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Game started"))
@@ -861,6 +871,44 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Question selected"))
 }
 
+func transitionToSelectQuestionAfterStart() {
+	allAcknowledged := true
+	for id, player := range gameState.players {
+		if !player.IsNPC && !gameStateInternal.startAcknowledgeReceived[id] {
+			allAcknowledged = false
+			break
+		}
+	}
+
+	if allAcknowledged {
+		transitionToSelectQuestionForced()
+	}
+}
+
+func transitionToSelectQuestionForced() {
+	// предотвращаем повторные вызовы
+	log.Printf("1!")
+	if gameState.state == StateSelectQuestion {
+		return
+	}
+
+	log.Printf("2!")
+	gameState.state = StateSelectQuestion
+
+	log.Printf("3!")
+	table := getQuestionsTable(gameState.roundNum)
+	log.Printf("4!")
+	gameState.broadcastMessage("questionstable", map[string]interface{}{
+		"table": table,
+	})
+
+	log.Printf("5!")
+	// ход NPC
+	if p := gameState.players[gameState.currentPlayerId]; p != nil && p.IsNPC {
+		go handleNPCTurn()
+	}
+}
+
 func transitionToQuestion() {
 	// Проверяем что все реальные игроки отправили acknowledge
 	allAcknowledged := true
@@ -940,6 +988,77 @@ func handleAcknowledge(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Acknowledged"))
+}
+
+func handleStartAcknowledge(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	gameState.mu.Lock()
+	defer gameState.mu.Unlock()
+
+	// Если уже перешли — просто OK
+	if gameState.state == StateSelectQuestion {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Already started"))
+		return
+	}
+
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	idStr := r.FormValue("id")
+	if idStr == "" {
+		http.Error(w, "Missing id", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid id", http.StatusBadRequest)
+		return
+	}
+
+	player, exists := gameState.players[id]
+	if !exists {
+		http.Error(w, "Player not found", http.StatusNotFound)
+		return
+	}
+
+	if player.IsNPC {
+		http.Error(w, "NPC players don't need to acknowledge", http.StatusBadRequest)
+		return
+	}
+
+	// сохраняем ack
+	gameStateInternal.startAcknowledgeReceived[id] = true
+
+	// если таймер ещё не запущен — запускаем
+	if !acknowledgeWaitStarted {
+		acknowledgeWaitStarted = true
+		startWaitingForAcknowledges()
+	}
+
+	// проверяем, не все ли уже ответили
+	transitionToSelectQuestionAfterStart()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Start acknowledged"))
+}
+
+func startWaitingForAcknowledges() {
+	go func() {
+		// время ожидания — меняешь как хочешь
+		time.AfterFunc(15 * time.Second, func() {
+			log.Printf("Force!")
+			transitionToSelectQuestionForced()
+		})
+	}()
 }
 
 func handleQuestionBeenShown(w http.ResponseWriter, r *http.Request) {
@@ -1348,31 +1467,7 @@ func handleNPCTurn() {
 // Функции для работы с вопросами
 
 func getQuestionsTable(roundNum int) string {
-	gameState.mu.RLock()
-	answeredQuestions := make(map[int]bool)
-	for k, v := range gameState.answeredQuestions {
-		answeredQuestions[k] = v
-	}
-	gameState.mu.RUnlock()
-
-	themes := getThemesForRound(roundNum)
-	
-	var table strings.Builder
-	table.WriteString("Темы:\n")
-	
-	for _, theme := range themes {
-		questions := getQuestionsForTheme(theme)
-		table.WriteString(fmt.Sprintf("\n%s:\n", theme.Name))
-		for _, q := range questions {
-			if !answeredQuestions[q.ID] {
-				table.WriteString(fmt.Sprintf("  [%d] %d\n", q.ID, q.Price))
-			} else {
-				table.WriteString(fmt.Sprintf("  [%d] ---\n", q.ID))
-			}
-		}
-	}
-	
-	return table.String()
+	return "!"
 }
 
 func getThemesForRound(roundNum int) []Theme {

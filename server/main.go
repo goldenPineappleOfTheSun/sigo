@@ -917,7 +917,7 @@ func transitionToSelectQuestionForced() {
 	gameState.state = StateSelectQuestion
 
 	log.Printf("before send table")
-	table := "!"
+	table := getQuestionsTable(gameState.roundNum)
 	gameState.broadcastMessage("questionstable", map[string]interface{}{
 		"table": table,
 	})
@@ -1504,9 +1504,17 @@ func getQuestionsTable(roundNum int) string {
 	themesCount := getThemesCountForRound(roundNum)
 	for i := 0; i < themesCount; i++ {
 		result = append(result, getThemeName(roundNum, i))
+		questionsCount := getQuestionsCount(roundNum, i)
+		for j := 0; j < 10; j++ {
+			if (i < questionsCount) {
+				result = append(result, getQuestionPrice(roundNum, i, j))
+			} else {
+				result = append(result, "")
+			}
+		}
 	}
 
-	return strings.Join(result, "")
+	return strings.Join(result, "|")
 
 	/*gameState.mu.RLock()
 	answeredQuestions := make(map[int]bool)
@@ -1550,15 +1558,23 @@ func getThemeName(roundNum int, themeNum int) string {
 
 	path := fmt.Sprintf("rounds.0.round.%d.themes.0.theme.%d.@name", roundNum, themeNum)
 	return gjson.Get(jsonString, path).String()
-	
-	/*rounds := gameState.packageJson["rounds"].([]interface{})                      // → [] of rounds
-    roundList := rounds[0].(map[string]interface{})["round"].([]interface{})
-    round := roundList[roundNum].(map[string]interface{})        // → selected round
-    themesList := round["themes"].([]interface{})                // → [] of themes
-    themeBlock := themesList[0].(map[string]interface{})         // → themes[0]
-    themeArray := themeBlock["theme"].([]interface{}) 
-	name := themeArray[themeNum].(map[string]interface{})["@name"].(string)
-	return name*/
+}
+
+func getQuestionsCount(roundNum int, themeNum int) int {
+	raw, _ := json.Marshal(gameState.packageJson)
+	jsonString := string(raw)
+
+	path := fmt.Sprintf("rounds.0.round.%d.themes.0.theme.%d.questions.0.question.#", roundNum, themeNum)
+	count := gjson.Get(jsonString, path).Int()
+	return int(count)
+}
+
+func getQuestionPrice(roundNum int, themeNum int, questNum int) string {
+	raw, _ := json.Marshal(gameState.packageJson)
+	jsonString := string(raw)
+
+	path := fmt.Sprintf("rounds.0.round.%d.themes.0.theme.%d.questions.0.question.%d.@price", roundNum, themeNum, questNum)
+	return gjson.Get(jsonString, path).String()
 }
 
 /*func getThemesForRound(roundNum int) []string {

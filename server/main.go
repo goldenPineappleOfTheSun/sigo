@@ -914,7 +914,7 @@ func transitionToSelectQuestionForced() {
 	gameState.state = StateSelectQuestion
 
 	log.Printf("before send table")
-	table := getQuestionsTable(gameState.roundNum)
+	table := "!"
 	gameState.broadcastMessage("questionstable", map[string]interface{}{
 		"table": table,
 	})

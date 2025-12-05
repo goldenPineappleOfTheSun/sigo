@@ -17,6 +17,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/goldenpineappleofthesun/siziph"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -1417,8 +1418,10 @@ func transitionToSelectQuestion(answeredPlayerId int) {
 	
 	gameState.state = StateSelectQuestion
 
-	// Проверяем закончились ли вопросы раунда
-	allAnswered := true
+	return
+
+	// TODO Проверяем закончились ли вопросы раунда
+	/*allAnswered := true
 	themes := getThemesForRound(gameState.roundNum)
 	for _, theme := range themes {
 		questions := getQuestionsForTheme(theme)
@@ -1452,11 +1455,11 @@ func transitionToSelectQuestion(answeredPlayerId int) {
 	// Если текущий игрок - NPC, обрабатываем его ход
 	if player := gameState.players[gameState.currentPlayerId]; player != nil && player.IsNPC {
 		go handleNPCTurn()
-	}
+	}*/
 }
 
 func handleNPCTurn() {
-	log.Printf("call handleNPCTurn()")
+	/*log.Printf("call handleNPCTurn()")
 	// Небольшая задержка
 	time.Sleep(1 * time.Second)
 
@@ -1467,10 +1470,10 @@ func handleNPCTurn() {
 	for k, v := range gameState.answeredQuestions {
 		answeredQuestions[k] = v
 	}
-	gameState.mu.Unlock()
+	gameState.mu.Unlock()*/
 
 	// Получаем доступные вопросы
-	themes := getThemesForRound(roundNum)
+	/*TODO themes := getThemesForRound(roundNum)
 	availableQuestions := make([]int, 0)
 	for _, theme := range themes {
 		questions := getQuestionsForTheme(theme)
@@ -1490,7 +1493,7 @@ func handleNPCTurn() {
 		req, _ := http.NewRequest("POST", "http://localhost:8080/selectquestion", strings.NewReader(formData))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		http.DefaultClient.Do(req)
-	}
+	}*/
 }
 
 // Функции для работы с вопросами
@@ -1498,15 +1501,9 @@ func handleNPCTurn() {
 func getQuestionsTable(roundNum int) string {
 	var result []string
 
-	rounds := gameState.packageJson["rounds"].([]interface{})
-
-	for _, r := range rounds {
-		roundList := r.(map[string]interface{})["round"].([]interface{})
-
-		for _, item := range roundList {
-			name := item.(map[string]interface{})["@name"].(string)
-			result = append(result, name)
-		}
+	themesCount := getThemesCountForRound(roundNum)
+	for i := 0; i < themesCount; i++ {
+		result = append(result, getThemeName(roundNum, i))
 	}
 
 	return strings.Join(result, "")
@@ -1538,7 +1535,50 @@ func getQuestionsTable(roundNum int) string {
 	return table.String()*/
 }
 
-func getThemesForRound(roundNum int) []Theme {
+func getThemesCountForRound(roundNum int) int {
+	raw, _ := json.Marshal(gameState.packageJson)
+	jsonString := string(raw)
+
+	path := fmt.Sprintf("rounds.0.round.%d.themes.0.theme.#", roundNum)
+	count := gjson.Get(jsonString, path).Int()
+	return int(count)
+}
+
+func getThemeName(roundNum int, themeNum int) string {
+	raw, _ := json.Marshal(gameState.packageJson)
+	jsonString := string(raw)
+
+	path := fmt.Sprintf("rounds.0.round.%d.themes.0.theme.%d.@name", roundNum, themeNum)
+	return gjson.Get(jsonString, path).String()
+	
+	/*rounds := gameState.packageJson["rounds"].([]interface{})                      // → [] of rounds
+    roundList := rounds[0].(map[string]interface{})["round"].([]interface{})
+    round := roundList[roundNum].(map[string]interface{})        // → selected round
+    themesList := round["themes"].([]interface{})                // → [] of themes
+    themeBlock := themesList[0].(map[string]interface{})         // → themes[0]
+    themeArray := themeBlock["theme"].([]interface{}) 
+	name := themeArray[themeNum].(map[string]interface{})["@name"].(string)
+	return name*/
+}
+
+/*func getThemesForRound(roundNum int) []string {
+	rounds := gameState.packageJson["rounds"].([]interface{})                      // → [] of rounds
+    roundList := rounds[0].(map[string]interface{})["round"].([]interface{})
+    round := roundList[roundNum].(map[string]interface{})        // → selected round
+    themesList := round["themes"].([]interface{})                // → [] of themes
+    themeBlock := themesList[0].(map[string]interface{})         // → themes[0]
+    themeArray := themeBlock["theme"].([]interface{})            // → [] of theme items
+    names := make([]string, 0, len(themeArray))
+    for _, t := range themeArray {
+        name := t.(map[string]interface{})["@name"].(string)
+        names = append(names, name)
+    }
+	return string
+}	
+
+func getPricesForTheme(roundNum int, )*/
+
+/*func getThemesForRound(roundNum int) []Theme {
 	gameState.mu.RLock()
 	packageJson := gameState.packageJson
 	gameState.mu.RUnlock()
@@ -1679,7 +1719,7 @@ func getThemesForRound(roundNum int) []Theme {
 	}
 
 	return themes
-}
+}*/
 
 func getQuestionsForTheme(theme Theme) []Question {
 	return theme.Questions

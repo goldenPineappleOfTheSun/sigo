@@ -21,8 +21,9 @@ import (
 
 const (
 	StateJoining          = "joining"
+	StateStartAck         = "wait-start-ack"
 	StateSelectQuestion   = "select-question"
-	StateWaitAcknowledge  = "wait-acknowledge"
+	StateQuestionAck      = "wait-question-ack"
 	StateQuestion         = "question"
 	StateWaitAnswer       = "wait-answer"
 	StateShowAnswer       = "show-answer"
@@ -76,7 +77,7 @@ type Theme struct {
 var gameState *GameState
 var npcCharacters []NPCCharacter
 var npcCharactersMap map[string]*NPCCharacter // Для быстрого поиска по имени
-var acknowledgeWaitStarted bool
+/*var acknowledgeWaitStarted bool*/
 
 func init() {
 	gameState = &GameState{
@@ -744,6 +745,7 @@ var gameStateInternal = &GameStateInternal{
 }
 
 func handleStart(w http.ResponseWriter, r *http.Request) {
+	log.Printf("call handleStart()")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -756,36 +758,45 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Game is not in joining state", http.StatusBadRequest)
 		return
 	}
+	gameState.state = StateStartAck
 
 	// Выбираем случайного первого игрока
 	playerIds := make([]int, 0, len(gameState.players))
 	for id := range gameState.players {
-		playerIds = append(playerIds, id)
+		if id < 1000 {             // <-- filter here
+			playerIds = append(playerIds, id)
+		}
 	}
+
 	if len(playerIds) == 0 {
-		http.Error(w, "No players", http.StatusBadRequest)
+		http.Error(w, "No eligible players", http.StatusBadRequest)
 		return
 	}
 
 	// Случайный выбор первого игрока
-	gameState.currentPlayerId = playerIds[time.Now().UnixNano()%int64(len(playerIds))]
+	idx := time.Now().UnixNano() % int64(len(playerIds))
+	gameState.currentPlayerId = playerIds[idx]
+
 	gameState.roundNum = 1
 	gameState.gameStartTime = time.Now().UTC()
+
+	log.Printf("currentPlayerId is %d", gameState.currentPlayerId)
+
 	
 	// Инициализируем карту подтверждений для старта
 	gameStateInternal.startAcknowledgeReceived = make(map[int]bool)
 	
 	// Отправляем сообщение start и ждем подтверждений
 	gameState.broadcastMessage("start", map[string]interface{}{})
+	log.Printf("ws start")
 
 	// Таймаут для startacknowledge
 	if gameStateInternal.startAcknowledgeTimeout != nil {
 		gameStateInternal.startAcknowledgeTimeout.Stop()
 	}
-	gameStateInternal.startAcknowledgeTimeout = time.AfterFunc(10*time.Second, func() {
+	gameStateInternal.startAcknowledgeTimeout = time.AfterFunc(30*time.Second, func() {
 		gameState.mu.Lock()
-		log.Printf("Game started!")
-		transitionToSelectQuestionAfterStart()
+		transitionToSelectQuestionForced()
 		gameState.mu.Unlock()
 	})
 
@@ -846,7 +857,7 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	gameStateInternal.selectedQuestionId = idQuest
-	gameState.state = StateWaitAcknowledge
+	gameState.state = StateQuestionAck
 	gameStateInternal.acknowledgesReceived = make(map[int]bool)
 
 	// Отправляем оповещение
@@ -861,7 +872,7 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 	}
 	gameStateInternal.acknowledgeTimeout = time.AfterFunc(5*time.Second, func() {
 		gameState.mu.Lock()
-		if gameState.state == StateWaitAcknowledge {
+		if gameState.state == StateQuestionAck {
 			transitionToQuestion()
 		}
 		gameState.mu.Unlock()
@@ -872,37 +883,43 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 }
 
 func transitionToSelectQuestionAfterStart() {
+	if gameState.state != StateStartAck {
+		return
+	}
+
 	allAcknowledged := true
 	for id, player := range gameState.players {
 		if !player.IsNPC && !gameStateInternal.startAcknowledgeReceived[id] {
 			allAcknowledged = false
+			log.Printf("player not started: %i", id)
 			break
 		}
 	}
 
 	if allAcknowledged {
+		log.Printf("all player started")
 		transitionToSelectQuestionForced()
 	}
 }
 
 func transitionToSelectQuestionForced() {
+	log.Printf("call transitionToSelectQuestionForced()")
+
 	// предотвращаем повторные вызовы
-	log.Printf("1!")
-	if gameState.state == StateSelectQuestion {
+	if gameState.state != StateStartAck {
+		log.Printf("call transitionToSelectQuestionForced stopped because state is %s", gameState.state)
 		return
 	}
 
-	log.Printf("2!")
 	gameState.state = StateSelectQuestion
 
-	log.Printf("3!")
+	log.Printf("before send table")
 	table := getQuestionsTable(gameState.roundNum)
-	log.Printf("4!")
 	gameState.broadcastMessage("questionstable", map[string]interface{}{
 		"table": table,
 	})
+	log.Printf("ws table")
 
-	log.Printf("5!")
 	// ход NPC
 	if p := gameState.players[gameState.currentPlayerId]; p != nil && p.IsNPC {
 		go handleNPCTurn()
@@ -921,7 +938,7 @@ func transitionToQuestion() {
 		}
 	}
 
-	if allAcknowledged || gameState.state == StateWaitAcknowledge {
+	if allAcknowledged || gameState.state == StateQuestionAck {
 		gameState.state = StateQuestion
 		gameStateInternal.questionShownReceived = make(map[int]bool)
 		gameStateInternal.requestAnswerReceived = make(map[int]int64)
@@ -958,7 +975,7 @@ func handleAcknowledge(w http.ResponseWriter, r *http.Request) {
 	gameState.mu.Lock()
 	defer gameState.mu.Unlock()
 
-	if gameState.state != StateWaitAcknowledge {
+	if gameState.state != StateStartAck {
 		http.Error(w, "Game is not in wait-acknowledge state", http.StatusBadRequest)
 		return
 	}
@@ -991,6 +1008,7 @@ func handleAcknowledge(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleStartAcknowledge(w http.ResponseWriter, r *http.Request) {
+	log.Printf("call handleStartAcknowledge()")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1003,46 +1021,53 @@ func handleStartAcknowledge(w http.ResponseWriter, r *http.Request) {
 	if gameState.state == StateSelectQuestion {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Already started"))
+		log.Printf("Already started")
 		return
 	}
 
 	err := r.ParseForm()
 	if err != nil {
+		log.Printf("Error parsing form")
 		http.Error(w, "Error parsing form", http.StatusBadRequest)
 		return
 	}
 
 	idStr := r.FormValue("id")
 	if idStr == "" {
+		log.Printf("Missing id")
 		http.Error(w, "Missing id", http.StatusBadRequest)
 		return
 	}
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		log.Printf("Invalid id")
 		http.Error(w, "Invalid id", http.StatusBadRequest)
 		return
 	}
 
 	player, exists := gameState.players[id]
 	if !exists {
+		log.Printf("Player not found")
 		http.Error(w, "Player not found", http.StatusNotFound)
 		return
 	}
-
+	
 	if player.IsNPC {
+		log.Printf("NPC players don't need to acknowledge")
 		http.Error(w, "NPC players don't need to acknowledge", http.StatusBadRequest)
 		return
 	}
 
 	// сохраняем ack
 	gameStateInternal.startAcknowledgeReceived[id] = true
+	log.Printf("player acknoledged %i", id)
 
 	// если таймер ещё не запущен — запускаем
-	if !acknowledgeWaitStarted {
+	/*if !acknowledgeWaitStarted {
 		acknowledgeWaitStarted = true
 		startWaitingForAcknowledges()
-	}
+	}*/
 
 	// проверяем, не все ли уже ответили
 	transitionToSelectQuestionAfterStart()
@@ -1050,17 +1075,18 @@ func handleStartAcknowledge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Start acknowledged"))
 }
-
+/*
 func startWaitingForAcknowledges() {
 	go func() {
 		// время ожидания — меняешь как хочешь
+		log.Printf("call startWaitingForAcknowledges()")
 		time.AfterFunc(15 * time.Second, func() {
-			log.Printf("Force!")
+			log.Printf("startWaitingForAcknowledges Force!")
 			transitionToSelectQuestionForced()
 		})
 	}()
 }
-
+*/
 func handleQuestionBeenShown(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1428,6 +1454,7 @@ func transitionToSelectQuestion(answeredPlayerId int) {
 }
 
 func handleNPCTurn() {
+	log.Printf("call handleNPCTurn()")
 	// Небольшая задержка
 	time.Sleep(1 * time.Second)
 
@@ -1467,7 +1494,31 @@ func handleNPCTurn() {
 // Функции для работы с вопросами
 
 func getQuestionsTable(roundNum int) string {
-	return "!"
+	gameState.mu.RLock()
+	answeredQuestions := make(map[int]bool)
+	for k, v := range gameState.answeredQuestions {
+		answeredQuestions[k] = v
+	}
+	gameState.mu.RUnlock()
+
+	themes := getThemesForRound(roundNum)
+	
+	var table strings.Builder
+	table.WriteString("Темы:\n")
+	
+	for _, theme := range themes {
+		questions := getQuestionsForTheme(theme)
+		table.WriteString(fmt.Sprintf("\n%s:\n", theme.Name))
+		for _, q := range questions {
+			if !answeredQuestions[q.ID] {
+				table.WriteString(fmt.Sprintf("  [%d] %d\n", q.ID, q.Price))
+			} else {
+				table.WriteString(fmt.Sprintf("  [%d] ---\n", q.ID))
+			}
+		}
+	}
+	
+	return table.String()
 }
 
 func getThemesForRound(roundNum int) []Theme {
@@ -1479,36 +1530,131 @@ func getThemesForRound(roundNum int) []Theme {
 		return []Theme{}
 	}
 
-	// Предполагаем структуру JSON: {"rounds": [{"themes": [...]}]}
+	// Новая структура: {"rounds": [{"round": [{"@name": "...", "themes": [...]}]}]}
 	rounds, ok := packageJson["rounds"].([]interface{})
 	if !ok || roundNum < 1 || roundNum > len(rounds) {
 		return []Theme{}
 	}
 
-	round := rounds[roundNum-1].(map[string]interface{})
-	themesData, ok := round["themes"].([]interface{})
+	// Подсчитываем количество вопросов в предыдущих раундах для правильной нумерации
+	questionCounter := 1
+	for i := 0; i < roundNum-1; i++ {
+		prevRoundMap := rounds[i].(map[string]interface{})
+		prevRoundArray, ok := prevRoundMap["round"].([]interface{})
+		if !ok || len(prevRoundArray) == 0 {
+			continue
+		}
+		prevRoundItem := prevRoundArray[0].(map[string]interface{})
+		prevThemesData, ok := prevRoundItem["themes"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, themeData := range prevThemesData {
+			themeMap, ok := themeData.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			themeArray, ok := themeMap["theme"].([]interface{})
+			if !ok || len(themeArray) == 0 {
+				continue
+			}
+			themeItem := themeArray[0].(map[string]interface{})
+			questionsData, ok := themeItem["questions"].([]interface{})
+			if ok {
+				for _, qData := range questionsData {
+					qMap, ok := qData.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					questionArray, ok := qMap["question"].([]interface{})
+					if ok && len(questionArray) > 0 {
+						questionCounter++
+					}
+				}
+			}
+		}
+	}
+
+	roundMap := rounds[roundNum-1].(map[string]interface{})
+	roundArray, ok := roundMap["round"].([]interface{})
+	if !ok || len(roundArray) == 0 {
+		return []Theme{}
+	}
+
+	roundItem := roundArray[0].(map[string]interface{})
+	themesData, ok := roundItem["themes"].([]interface{})
 	if !ok {
 		return []Theme{}
 	}
 
-	themes := make([]Theme, 0, len(themesData))
+	themes := make([]Theme, 0)
+
 	for _, themeData := range themesData {
-		themeMap := themeData.(map[string]interface{})
+		themeMap, ok := themeData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		themeArray, ok := themeMap["theme"].([]interface{})
+		if !ok || len(themeArray) == 0 {
+			continue
+		}
+
+		themeItem := themeArray[0].(map[string]interface{})
+		themeName := getString(themeItem, "@name")
+		
 		theme := Theme{
-			Name:      getString(themeMap, "name"),
+			Name:      themeName,
 			Questions: []Question{},
 		}
 
-		questionsData, ok := themeMap["questions"].([]interface{})
+		questionsData, ok := themeItem["questions"].([]interface{})
 		if ok {
 			for _, qData := range questionsData {
-				qMap := qData.(map[string]interface{})
+				qMap, ok := qData.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				questionArray, ok := qMap["question"].([]interface{})
+				if !ok || len(questionArray) == 0 {
+					continue
+				}
+
+				questionItem := questionArray[0].(map[string]interface{})
+				
+				// Извлекаем цену из @price
+				priceStr := getString(questionItem, "@price")
+				price, err := strconv.Atoi(priceStr)
+				if err != nil {
+					price = 0
+				}
+
+				// Извлекаем текст вопроса
+				questionText := ""
+				if params, ok := questionItem["params"].([]interface{}); ok {
+					for _, paramGroup := range params {
+						if paramGroupMap, ok := paramGroup.(map[string]interface{}); ok {
+							if paramArray, ok := paramGroupMap["param"].([]interface{}); ok {
+								for _, param := range paramArray {
+									if text := extractTextFromParam(param, "question"); text != "" {
+										questionText = text
+										break
+									}
+								}
+							}
+						}
+					}
+				}
+
 				theme.Questions = append(theme.Questions, Question{
-					ID:    int(getFloat(qMap, "id")),
-					Price: int(getFloat(qMap, "price")),
-					Theme: theme.Name,
-					Text:  getString(qMap, "text"),
+					ID:    questionCounter,
+					Price: price,
+					Theme: themeName,
+					Text:  questionText,
 				})
+				
+				questionCounter++
 			}
 		}
 
@@ -1527,41 +1673,21 @@ func checkAnswer(idQuest int, answer string) (bool, string) {
 	packageJson := gameState.packageJson
 	gameState.mu.RUnlock()
 
-	// Ищем вопрос в пакете
-	rounds, ok := packageJson["rounds"].([]interface{})
-	if !ok {
-		return false, "Ошибка в структуре пакета"
+	// Используем вспомогательную функцию для поиска вопроса
+	questionMap, correctAnswer, _ := findQuestionById(packageJson, idQuest)
+	if questionMap == nil {
+		return false, "Вопрос не найден"
 	}
 
-	for _, roundData := range rounds {
-		round := roundData.(map[string]interface{})
-		themesData, ok := round["themes"].([]interface{})
-		if !ok {
-			continue
-		}
-
-		for _, themeData := range themesData {
-			themeMap := themeData.(map[string]interface{})
-			questionsData, ok := themeMap["questions"].([]interface{})
-			if !ok {
-				continue
-			}
-
-			for _, qData := range questionsData {
-				qMap := qData.(map[string]interface{})
-				if int(getFloat(qMap, "id")) == idQuest {
-					correctAnswer := getString(qMap, "answer")
-					comment := getString(qMap, "comment")
-					
-					// Простая проверка (можно улучшить)
-					result := strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(correctAnswer))
-					return result, comment
-				}
-			}
-		}
+	if correctAnswer == "" {
+		return false, "Ответ не найден в вопросе"
 	}
 
-	return false, "Вопрос не найден"
+	// Простая проверка (можно улучшить)
+	result := strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(correctAnswer))
+	comment := "" // В новой структуре комментарий может быть в другом месте, если нужно
+
+	return result, comment
 }
 
 func getPointsForQuestion(idQuest int) int {
@@ -1569,35 +1695,20 @@ func getPointsForQuestion(idQuest int) int {
 	packageJson := gameState.packageJson
 	gameState.mu.RUnlock()
 
-	rounds, ok := packageJson["rounds"].([]interface{})
-	if !ok {
+	// Используем вспомогательную функцию для поиска вопроса
+	questionMap, _, _ := findQuestionById(packageJson, idQuest)
+	if questionMap == nil {
 		return 0
 	}
 
-	for _, roundData := range rounds {
-		round := roundData.(map[string]interface{})
-		themesData, ok := round["themes"].([]interface{})
-		if !ok {
-			continue
-		}
-
-		for _, themeData := range themesData {
-			themeMap := themeData.(map[string]interface{})
-			questionsData, ok := themeMap["questions"].([]interface{})
-			if !ok {
-				continue
-			}
-
-			for _, qData := range questionsData {
-				qMap := qData.(map[string]interface{})
-				if int(getFloat(qMap, "id")) == idQuest {
-					return int(getFloat(qMap, "price"))
-				}
-			}
-		}
+	// Извлекаем цену из @price
+	priceStr := getString(questionMap, "@price")
+	price, err := strconv.Atoi(priceStr)
+	if err != nil {
+		return 0
 	}
 
-	return 0
+	return price
 }
 
 type NPCAnswer struct {
@@ -1615,40 +1726,20 @@ func generateAnswer(npc *Player) NPCAnswer {
 		selectedQuestionId := gameStateInternal.selectedQuestionId
 		gameState.mu.RUnlock()
 
-		// Пытаемся найти правильный ответ для текущего вопроса
-		rounds, ok := packageJson["rounds"].([]interface{})
-		if ok {
-			for _, roundData := range rounds {
-				round := roundData.(map[string]interface{})
-				themesData, ok := round["themes"].([]interface{})
-				if !ok {
-					continue
+		// Используем вспомогательную функцию для поиска вопроса
+		_, correctAnswer, _ := findQuestionById(packageJson, selectedQuestionId)
+		
+		if correctAnswer != "" {
+			// Случайно решает ответить правильно или неправильно
+			if time.Now().UnixNano()%2 == 0 {
+				return NPCAnswer{
+					HaveAnswer: true,
+					Answer:     correctAnswer,
 				}
-
-				for _, themeData := range themesData {
-					themeMap := themeData.(map[string]interface{})
-					questionsData, ok := themeMap["questions"].([]interface{})
-					if !ok {
-						continue
-					}
-
-					for _, qData := range questionsData {
-						qMap := qData.(map[string]interface{})
-						if int(getFloat(qMap, "id")) == selectedQuestionId {
-							// Случайно решает ответить правильно или неправильно
-							if time.Now().UnixNano()%2 == 0 {
-								return NPCAnswer{
-									HaveAnswer: true,
-									Answer:     getString(qMap, "answer"),
-								}
-							} else {
-								return NPCAnswer{
-									HaveAnswer: true,
-									Answer:     "Не знаю",
-								}
-							}
-						}
-					}
+			} else {
+				return NPCAnswer{
+					HaveAnswer: true,
+					Answer:     "Не знаю",
 				}
 			}
 		}
@@ -1672,7 +1763,23 @@ func isThereNextRound(currentRound int) bool {
 		return false
 	}
 
-	return currentRound < len(rounds)
+	// В новой структуре rounds - это массив объектов с полем "round"
+	// Каждый round может содержать массив round элементов
+	// Считаем общее количество раундов
+	totalRounds := 0
+	for _, roundData := range rounds {
+		roundMap, ok := roundData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if roundArray, ok := roundMap["round"].([]interface{}); ok {
+			totalRounds += len(roundArray)
+		} else {
+			totalRounds++ // Если round не массив, считаем как один раунд
+		}
+	}
+
+	return currentRound < totalRounds
 }
 
 // Вспомогательные функции
@@ -1695,9 +1802,150 @@ func getFloat(m map[string]interface{}, key string) float64 {
 			return float64(v)
 		case int64:
 			return float64(v)
+		case string:
+			// Пробуем распарсить строку как число
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				return f
+			}
 		}
 	}
 	return 0
+}
+
+// Вспомогательные функции для работы с новой структурой JSON
+
+// extractTextFromItem извлекает текст из item структуры
+func extractTextFromItem(item interface{}) string {
+	if itemMap, ok := item.(map[string]interface{}); ok {
+		if text, ok := itemMap["#text"].(string); ok {
+			return text
+		}
+	}
+	return ""
+}
+
+// extractTextFromParam извлекает текст из param структуры по имени
+func extractTextFromParam(param interface{}, paramName string) string {
+	if paramMap, ok := param.(map[string]interface{}); ok {
+		if name, ok := paramMap["@name"].(string); ok && name == paramName {
+			if items, ok := paramMap["item"].([]interface{}); ok {
+				for _, item := range items {
+					if text := extractTextFromItem(item); text != "" {
+						return text
+					}
+				}
+			} else if item, ok := paramMap["item"].(map[string]interface{}); ok {
+				return extractTextFromItem(item)
+			}
+		}
+	}
+	return ""
+}
+
+// findQuestionById находит вопрос по ID в новой структуре
+func findQuestionById(packageJson map[string]interface{}, idQuest int) (map[string]interface{}, string, string) {
+	rounds, ok := packageJson["rounds"].([]interface{})
+	if !ok {
+		return nil, "", ""
+	}
+
+	questionCounter := 1
+	for _, roundData := range rounds {
+		roundMap, ok := roundData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		roundArray, ok := roundMap["round"].([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, roundItem := range roundArray {
+			roundItemMap, ok := roundItem.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			themesData, ok := roundItemMap["themes"].([]interface{})
+			if !ok {
+				continue
+			}
+
+			for _, themeData := range themesData {
+				themeMap, ok := themeData.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				themeArray, ok := themeMap["theme"].([]interface{})
+				if !ok {
+					continue
+				}
+
+				for _, themeItem := range themeArray {
+					themeItemMap, ok := themeItem.(map[string]interface{})
+					if !ok {
+						continue
+					}
+
+					questionsData, ok := themeItemMap["questions"].([]interface{})
+					if !ok {
+						continue
+					}
+
+					for _, qData := range questionsData {
+						qMap, ok := qData.(map[string]interface{})
+						if !ok {
+							continue
+						}
+
+						questionArray, ok := qMap["question"].([]interface{})
+						if !ok {
+							continue
+						}
+
+						for _, questionItem := range questionArray {
+							questionMap, ok := questionItem.(map[string]interface{})
+							if !ok {
+								continue
+							}
+
+							// Генерируем ID на основе позиции
+							currentId := questionCounter
+							questionCounter++
+
+							if currentId == idQuest {
+								// Извлекаем тему
+								themeName := getString(themeItemMap, "@name")
+								
+								// Извлекаем ответ
+								answer := ""
+								if params, ok := questionMap["params"].([]interface{}); ok {
+									for _, paramGroup := range params {
+										if paramGroupMap, ok := paramGroup.(map[string]interface{}); ok {
+											if paramArray, ok := paramGroupMap["param"].([]interface{}); ok {
+												for _, param := range paramArray {
+													if text := extractTextFromParam(param, "answer"); text != "" {
+														answer = text
+														break
+													}
+												}
+											}
+										}
+									}
+								}
+
+								return questionMap, answer, themeName
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil, "", ""
 }
 
 func withCORS(h http.Handler) http.Handler {

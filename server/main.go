@@ -306,6 +306,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	gameState.packageJson = packageJson
 
+	log.Printf("%s", getQuestionsTable(gameState.roundNum))
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Package uploaded successfully"))
 }
@@ -1494,7 +1496,22 @@ func handleNPCTurn() {
 // Функции для работы с вопросами
 
 func getQuestionsTable(roundNum int) string {
-	gameState.mu.RLock()
+	var result []string
+
+	rounds := gameState.packageJson["rounds"].([]interface{})
+
+	for _, r := range rounds {
+		roundList := r.(map[string]interface{})["round"].([]interface{})
+
+		for _, item := range roundList {
+			name := item.(map[string]interface{})["@name"].(string)
+			result = append(result, name)
+		}
+	}
+
+	return strings.Join(result, "")
+
+	/*gameState.mu.RLock()
 	answeredQuestions := make(map[int]bool)
 	for k, v := range gameState.answeredQuestions {
 		answeredQuestions[k] = v
@@ -1518,7 +1535,7 @@ func getQuestionsTable(roundNum int) string {
 		}
 	}
 	
-	return table.String()
+	return table.String()*/
 }
 
 func getThemesForRound(roundNum int) []Theme {

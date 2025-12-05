@@ -931,31 +931,35 @@
             
             if (!gameData.packageJson || !gameData.packageJson.rounds) return;
             
+            // Новая структура: rounds -> round[] -> themes -> theme[] -> questions -> question[]
             for (const round of gameData.packageJson.rounds) {
-                const roundData = Array.isArray(round.round) ? round.round[0] : round;
-                if (!roundData || !roundData.themes) continue;
+                if (!round || !round.round) continue;
                 
-                const themes = Array.isArray(roundData.themes) ? roundData.themes : [roundData.themes];
-                for (const themeData of themes) {
-                    const theme = Array.isArray(themeData.theme) ? themeData.theme[0] : themeData;
-                    if (!theme || !theme.questions) continue;
+                const roundArray = Array.isArray(round.round) ? round.round : [round.round];
+                for (const roundItem of roundArray) {
+                    if (!roundItem || !roundItem.themes) continue;
                     
-                    const questions = Array.isArray(theme.questions) ? theme.questions : [theme.questions];
-                    for (const qData of questions) {
-                        const q = Array.isArray(qData.question) ? qData.question[0] : qData;
-                        if (!q) continue;
+                    const themes = Array.isArray(roundItem.themes) ? roundItem.themes : [roundItem.themes];
+                    for (const themeData of themes) {
+                        if (!themeData || !themeData.theme) continue;
                         
-                        // Пробуем найти ID в разных местах
-                        let qId = q['@id'] || q.id;
-                        
-                        // Если ID нет, используем счетчик (как fallback)
-                        if (!qId) {
-                            qId = questionCounter++;
-                        }
-                        
-                        const idNum = parseInt(qId);
-                        if (!isNaN(idNum)) {
-                            gameData.questionsCache.set(idNum, q);
+                        const themeArray = Array.isArray(themeData.theme) ? themeData.theme : [themeData.theme];
+                        for (const theme of themeArray) {
+                            if (!theme || !theme.questions) continue;
+                            
+                            const questions = Array.isArray(theme.questions) ? theme.questions : [theme.questions];
+                            for (const qData of questions) {
+                                if (!qData || !qData.question) continue;
+                                
+                                const questionArray = Array.isArray(qData.question) ? qData.question : [qData.question];
+                                for (const q of questionArray) {
+                                    if (!q) continue;
+                                    
+                                    // Используем счетчик для генерации ID (как на сервере)
+                                    const idNum = questionCounter++;
+                                    gameData.questionsCache.set(idNum, q);
+                                }
+                            }
                         }
                     }
                 }

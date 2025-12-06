@@ -176,7 +176,8 @@
 
         .media-audio {
             font-size: 64px;
-            animation: pulse 2s infinite;
+            width: auto;
+            /*animation: pulse 2s infinite;*/
         }
 
         @keyframes pulse {
@@ -872,9 +873,9 @@
         }
 
         // Обработка showquestion
-        async function handleShowQuestion(questionId, startTime) {
+        async function handleShowQuestion(questionId) {
             // Отправляем acknowledge
-            try {
+            /*try {
                 const formData = new URLSearchParams();
                 formData.append('id', playerId);
                 await fetch(`${getServerUrl()}/acknowledge`, {
@@ -893,12 +894,35 @@
                 }, delay);
             } else {
                 showQuestion(questionId, 0);
-            }
+            }*/
         }
 
         // Показ вопроса
-        async function showQuestion(questionId, mediaIndex) {
-            const centerZone = document.getElementById('centerZone');
+        async function showQuestion(questionId) {
+            const parts = questionId.split('_')
+            const r = +parts[0]-1
+            const t = +parts[1]-1
+            const q = +parts[2]-1
+
+            const question = gameData.packageJson['rounds'][0]['round'][r]['themes'][0]['theme'][t]['questions'][0]['question'][q]
+            const content = question['params'][0]['param'].find(x => x['@name'] == 'question')['item']
+
+            for (let stage of content) {
+                if (!stage['@type']) {
+                    await showTextMedia(stage, content.length > 1);
+                }
+                if (stage['@type'] === "image") {
+                    await showImageMedia(stage);
+                }
+                if (stage['@type'] === "audio") {
+                    await showAudioMedia(stage);
+                }
+                if (stage['@type'] === "video") {
+                    await showVideoMedia(stage);
+                }
+            }
+
+            /*const centerZone = document.getElementById('centerZone');
             centerZone.classList.remove('hidden');
             
             // Находим вопрос в данных
@@ -933,7 +957,56 @@
                         console.error('Ошибка questionbeenshown:', error);
                     }
                 }
-            }
+            }*/
+        }
+
+        async function showTextMedia(data, short) {
+            let text = data['#text'];
+            let label = $('<div>').text(text).addClass('media-text media-content')
+            $('#centerZone').html('').append(label)
+            return new Promise(resolve => setTimeout(resolve, short ? 3000 : 3000 + text.length * 100))
+        }
+
+        async function showImageMedia(data) {
+            let name = data['#text'];
+            let url = urls[`questions/Images/${name}`]
+            let img = $('<img>').attr('src', url).addClass('media-image media-content')
+            $('#centerZone').html('').append(img)
+            return new Promise(resolve => setTimeout(resolve, 6000))
+        }
+
+        async function showAudioMedia(data) {
+            let name = data['#text'];
+            let url = urls[`questions/Audio/${name}`]
+            let img = $('<img>').attr('src', './music.gif').addClass('media-audio media-content')
+            $('#centerZone').html('').append(img)
+            return new Promise((resolve, reject) => {
+                const audio = new Audio(url);
+                audio.loop = false;
+
+                audio.addEventListener("ended", () => resolve());
+                audio.addEventListener("error", err => reject(err));
+
+                audio.play().catch(reject);
+            });
+        }
+
+        async function showVideoMedia(data) {
+            let name = data['#text'];
+            let url = urls[`questions/Video/${name}`];
+
+            const container = $('#centerZone');
+            const video = $('<video>').addClass('media-video media-content')
+                .attr('src', url)
+                .attr('controls', false)    // optional
+                .attr('autoplay', true)    // start immediately
+                .attr('loop', false)       // play only once
+                .attr('playsInline', true) // needed for mobile (iOS)
+            $('#centerZone').html('').append(video);
+
+            return new Promise(resolve => {
+                video.on('ended', resolve);
+            })
         }
 
         // Поиск вопроса по ID
@@ -992,7 +1065,7 @@
         }
 
         // Получение медиа из вопроса
-        function getQuestionMedia(question) {
+        /*function getQuestionMedia(question) {
             const media = [];
             
             if (!question.params) return media;
@@ -1075,7 +1148,7 @@
             
             html += '</div>';
             centerZone.innerHTML = html;
-        }
+        }*/
 
         // Обработка cananswer
         function handleCanAnswer(timestamp) {

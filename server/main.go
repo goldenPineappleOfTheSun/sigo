@@ -125,6 +125,7 @@ func main() {
 	http.Handle("/data",             withCORS(http.HandlerFunc(handleData)))
 	http.Handle("/media",            withCORS(http.HandlerFunc(handleMedia)))
 	http.Handle("/currentplayer",    withCORS(http.HandlerFunc(handleCurrentPlayer)))
+	http.Handle("/currentround",    withCORS(http.HandlerFunc(handleCurrentRound)))
 	http.Handle("/playerstate",      withCORS(http.HandlerFunc(handlePlayerState)))
 	http.Handle("/start",            withCORS(http.HandlerFunc(handleStart)))
 	http.Handle("/startacknowledge", withCORS(http.HandlerFunc(handleStartAcknowledge)))
@@ -688,6 +689,20 @@ func handleCurrentPlayer(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(strconv.Itoa(currentPlayerId)))
 }
 
+func handleCurrentRound(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	gameState.mu.RLock()
+	roundNum := gameState.roundNum
+	gameState.mu.RUnlock()
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(strconv.Itoa(roundNum)))
+}
+
 func handlePlayerState(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -766,7 +781,7 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	// Выбираем случайного первого игрока
 	playerIds := make([]int, 0, len(gameState.players))
 	for id := range gameState.players {
-		if id < 1000 {             // <-- filter here
+		if id < 1000 {            
 			playerIds = append(playerIds, id)
 		}
 	}
@@ -778,6 +793,7 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 
 	// Случайный выбор первого игрока
 	idx := time.Now().UnixNano() % int64(len(playerIds))
+
 	gameState.currentPlayerId = playerIds[idx]
 
 	gameState.roundNum = 1

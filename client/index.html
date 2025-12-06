@@ -519,6 +519,7 @@
                 
                 // Обновляем панель ведущего
                 document.querySelector('.host-photo').setAttribute('src', getPlayerAvatar(1000));
+                updatePlayers();
                 
                 // Отправляем подтверждение
                 const formData = new URLSearchParams();

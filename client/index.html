@@ -391,6 +391,7 @@
         }
 
         .current-player{
+            outline: 2px solid white;
             background-size: 30px 30px;
             background-image: linear-gradient(45deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%, transparent 50%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.1) 75%, transparent 75%, transparent);
             animation: barberpole 0.5s linear infinite;
@@ -764,6 +765,8 @@
                 const response = await fetch(`${getServerUrl()}/currentplayer`);
                 const currentPlayerId = parseInt(await response.text());
                 gameData.currentPlayerId = currentPlayerId;
+                $(`.playerCard`).removeClass('current-player');
+                $(`#player-${currentPlayerId}`).addClass('current-player');
                 
                 if (currentPlayerId === playerId) {
                     enableQuestionButtons();
@@ -1314,5 +1317,7 @@
         // Инициализация при загрузке
         window.addEventListener('load', init);
     </script>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js" integrity="sha256-kmHvs0B+OpCW5GVHUNjv9rOmY0IvSIRcf7zGUDTDQM8=" crossorigin="anonymous"></script>
 </body>
 </html>

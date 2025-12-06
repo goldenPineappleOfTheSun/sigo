@@ -460,14 +460,22 @@
             currentPlayerId: null,
             answeredQuestions: new Set(),
             selectedQuestionId: null,
-            canAnswerTime: null,
+            /*canAnswerTime: null,
             answerTimer: null,
             progressTimer: null,
             questionStartTime: null,
-            questionDuration: 60000, // 60 секунд по умолчанию
+            questionDuration: 60000,*/
             ws: null,
-            questionsCache: null
+            questionTimer: {
+                duration: 10000,
+                remains: 0,
+                running: false,
+                lastTimestamp: 0
+            }
+            //questionsCache: null,
         };
+
+        setInterval(questionTimerStep, 25)
 
         // Инициализация
         async function init() {
@@ -1152,7 +1160,7 @@
 
         // Обработка cananswer
         function handleCanAnswer(timestamp) {
-            gameData.canAnswerTime = timestamp;
+            /*gameData.canAnswerTime = timestamp;
             const delay = timestamp - Date.now();
             
             if (delay > 0) {
@@ -1163,7 +1171,7 @@
             } else {
                 enableAnswerButton();
                 startAnswerTimer();
-            }
+            }*/
         }
 
         // Включение кнопки ответить
@@ -1178,9 +1186,26 @@
             button.disabled = true;
         }
 
+        function questionTimerStep() {
+            if (!gameData.questionTimer.running) {
+                return;
+            }
+            if (gameData.questionTimer.remains <= 0) {
+                stopAnswerTimer()
+            }
+            gameData.questionTimer.remains -= +new Date() - gameData.questionTimer.lastTimestamp;
+            gameData.questionTimer.lastTimestamp = +new Date()
+            let progress = (gameData.questionTimer.remains / gameData.questionTimer.duration) * 100;
+            $('.container').css('background', `linear-gradient(90deg, #8BC34A 0%, #8BC34A 100%) 0 0 / ${progress}% 100% no-repeat, linear-gradient(135deg, #667eea 0%, #764ba2 100%)`)
+        }
+
         // Запуск таймера ответа
-        function startAnswerTimer() {
-            if (gameData.progressTimer) {
+        function runAnswerTimer(sec) {
+            gameData.questionTimer.duration = sec * 1000;
+            gameData.questionTimer.remains = sec * 1000;
+            gameData.questionTimer.running = true;
+            gameData.questionTimer.lastTimestamp = +new Date();
+            /*if (gameData.progressTimer) {
                 clearInterval(gameData.progressTimer);
             }
             
@@ -1204,23 +1229,31 @@
                     clearInterval(gameData.progressTimer);
                     disableAnswerButton();
                 }
-            }, 100);
+            }, 100);*/
+        }
+
+        function stopAnswerTimer() {
+            gameData.questionTimer.running = false;
+            $('.container').css('background', `linear-gradient(135deg, #667eea 0%, #764ba2 100%)`)
         }
 
         // Заморозка таймера
         function freezeTimer() {
-            if (gameData.progressTimer) {
+            gameData.questionTimer.running = false;
+            /*if (gameData.progressTimer) {
                 clearInterval(gameData.progressTimer);
                 gameData.progressTimer = null;
             }
             document.querySelectorAll('.player-progress-fill').forEach(bar => {
                 bar.classList.add('frozen');
-            });
+            });*/
         }
 
         // Разморозка таймера
         function unfreezeTimer() {
-            document.querySelectorAll('.player-progress-fill').forEach(bar => {
+            gameData.questionTimer.running = true;
+            gameData.questionTimer.lastTimestamp = +new Date()
+            /*document.querySelectorAll('.player-progress-fill').forEach(bar => {
                 bar.classList.remove('frozen');
             });
             // Восстанавливаем время начала с учетом заморозки
@@ -1228,7 +1261,7 @@
                 const elapsed = Date.now() - gameData.questionStartTime;
                 gameData.questionStartTime = Date.now() - elapsed;
             }
-            startAnswerTimer();
+            startAnswerTimer();*/
         }
 
         // Обработка waitanswer
@@ -1306,15 +1339,15 @@
 
         // Обработка showanswer
         async function handleShowAnswer(questId) {
-            const answer = findAnswerById(questId);
+            /*const answer = findAnswerById(questId);
             if (answer) {
                 await displayAnswer(answer);
-            }
+            }*/
         }
 
         // Поиск ответа по ID вопроса
         function findAnswerById(questionId) {
-            const question = findQuestionById(questionId);
+            /*const question = findQuestionById(questionId);
             if (!question) return null;
             
             const media = [];
@@ -1364,12 +1397,12 @@
                 }
             }
             
-            return media.length > 0 ? media : null;
+            return media.length > 0 ? media : null;*/
         }
 
         // Отображение ответа
         async function displayAnswer(mediaItems) {
-            const centerZone = document.getElementById('centerZone');
+            /*const centerZone = document.getElementById('centerZone');
             centerZone.classList.remove('hidden');
             
             if (mediaItems && mediaItems.length > 0) {
@@ -1381,7 +1414,7 @@
                 }
             } else {
                 centerZone.innerHTML = '<div class="loading">Ответ</div>';
-            }
+            }*/
         }
 
         // Реплика ведущего

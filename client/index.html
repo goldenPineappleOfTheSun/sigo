@@ -230,7 +230,7 @@
             padding: 15px 30px;
             font-size: 18px;
             font-weight: bold;
-            background: #4CAF50;
+            background: #ff4949;
             color: white;
             border: none;
             border-radius: 25px;
@@ -239,8 +239,12 @@
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
 
+        .answer-button:not(:disabled) {
+            outline: 10px solid white;
+        }
+
         .answer-button:hover:not(:disabled) {
-            background: #45a049;
+            background: #ff4949;
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
         }
@@ -1205,6 +1209,7 @@
             gameData.questionTimer.remains = sec * 1000;
             gameData.questionTimer.running = true;
             gameData.questionTimer.lastTimestamp = +new Date();
+            enableAnswerButton()
             /*if (gameData.progressTimer) {
                 clearInterval(gameData.progressTimer);
             }
@@ -1235,11 +1240,13 @@
         function stopAnswerTimer() {
             gameData.questionTimer.running = false;
             $('.container').css('background', `linear-gradient(135deg, #667eea 0%, #764ba2 100%)`)
+            disableAnswerButton()
         }
 
         // Заморозка таймера
         function freezeTimer() {
             gameData.questionTimer.running = false;
+            disableAnswerButton()
             /*if (gameData.progressTimer) {
                 clearInterval(gameData.progressTimer);
                 gameData.progressTimer = null;
@@ -1253,6 +1260,7 @@
         function unfreezeTimer() {
             gameData.questionTimer.running = true;
             gameData.questionTimer.lastTimestamp = +new Date()
+            enableAnswerButton()
             /*document.querySelectorAll('.player-progress-fill').forEach(bar => {
                 bar.classList.remove('frozen');
             });
@@ -1442,12 +1450,12 @@
             logZone.scrollTop = logZone.scrollHeight;
         }
 
-        // Обработка кнопки ответить
-        document.getElementById('answerButton').addEventListener('click', async () => {
+        async function answerButtonClicked() {
             const button = document.getElementById('answerButton');
             if (button.disabled) return;
             
             disableAnswerButton();
+            freezeTimer();
             
             try {
                 const formData = new URLSearchParams();
@@ -1460,6 +1468,15 @@
                 });
             } catch (error) {
                 console.error('Ошибка requestanswer:', error);
+            }
+        }
+
+        // Обработка кнопки ответить
+        document.getElementById('answerButton').addEventListener('click', answerButtonClicked);
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                answerButtonClicked();
             }
         });
 

@@ -1180,6 +1180,8 @@ func sendCanAnswer() {
 }
 
 func handleRequestAnswer(w http.ResponseWriter, r *http.Request) {
+	log.Printf("call handleRequestAnswer()")
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1190,6 +1192,7 @@ func handleRequestAnswer(w http.ResponseWriter, r *http.Request) {
 
 	if gameState.state != StateQuestion {
 		http.Error(w, "Game is not in question state", http.StatusBadRequest)
+		log.Printf("call handleRequestAnswer stopped because state is %s", gameState.state)
 		return
 	}
 
@@ -1199,32 +1202,25 @@ func handleRequestAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := r.FormValue("id")
-	timestampStr := r.FormValue("timestamp")
+	playerStr := r.FormValue("player")
 
-	if idStr == "" || timestampStr == "" {
+	if playerStr == "" {
 		http.Error(w, "Missing parameters", http.StatusBadRequest)
 		return
 	}
 
-	id, err := strconv.Atoi(idStr)
+	id, err := strconv.Atoi(playerStr)
 	if err != nil {
 		http.Error(w, "Invalid id", http.StatusBadRequest)
 		return
 	}
 
-	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid timestamp", http.StatusBadRequest)
-		return
-	}
-
 	// Сохраняем запрос
-	gameStateInternal.requestAnswerReceived[id] = timestamp
+	gameStateInternal.requestAnswerReceived[id] = 0
 
 	// Если это первый запрос, запускаем таймер для обработки
 	if len(gameStateInternal.requestAnswerReceived) == 1 {
-		time.AfterFunc(500*time.Millisecond, func() {
+		time.AfterFunc(3*time.Second, func() {
 			gameState.mu.Lock()
 			processAnswerRequests()
 			gameState.mu.Unlock()
@@ -1236,12 +1232,13 @@ func handleRequestAnswer(w http.ResponseWriter, r *http.Request) {
 }
 
 func processAnswerRequests() {
+	log.Printf("call processAnswerRequests()")
+
 	if gameState.state != StateQuestion {
 		return
 	}
 
-	// Находим игрока с наименьшим timestamp
-	minTimestamp := int64(^uint64(0) >> 1)
+	/*minTimestamp := int64(^uint64(0) >> 1)
 	winnerId := -1
 
 	for id, ts := range gameStateInternal.requestAnswerReceived {
@@ -1249,7 +1246,11 @@ func processAnswerRequests() {
 			minTimestamp = ts
 			winnerId = id
 		}
-	}
+	}*/
+
+	// Находим random player who answered
+	winnerId := time.Now().UnixNano() % int64(len(gameStateInternal.requestAnswerReceived))
+	log.Printf("winnerId %d", winnerId)
 
 	if winnerId != -1 {
 		gameState.state = StateWaitAnswer

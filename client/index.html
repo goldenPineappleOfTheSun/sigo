@@ -162,10 +162,12 @@
         }
 
         .media-image {
+            width: auto;
+            height: auto;
             max-width: 90%;
             max-height: 80%;
             border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
 
         .media-video {
@@ -789,7 +791,7 @@
                 const response = await fetch(`${getServerUrl()}/currentplayer`);
                 const currentPlayerId = parseInt(await response.text());
                 gameData.currentPlayerId = currentPlayerId;
-                $(`.playerCard`).removeClass('current-player');
+                $(`.player-card`).removeClass('current-player');
                 $(`#player-${currentPlayerId}`).addClass('current-player');
                 
                 if (currentPlayerId === playerId) {
@@ -824,12 +826,15 @@
             return `${roundNum}_${themeNum}_${questionNum}`
         }
 
-        function HighlightQuestionForSeconds(questionStringId, sec) {
+        async function HighlightQuestionForSeconds(questionStringId, sec) {
             const cell = $(`.question-cell-${questionStringId}`)
             cell.addClass('selected')
-            setTimeout(() => {
-                cell.removeClass('selected')
-            }, sec * 1000)
+            return new Promise(resolve => 
+                setTimeout(() => {  
+                    cell.removeClass('selected')
+                    resolve()
+                }, sec * 1000)
+            )
         }
 
         // Выбор вопроса
@@ -879,9 +884,11 @@
         }
 
         // Обработка questionselected
-        function handleQuestionSelected(questionId) {
+        async function handleQuestionSelected(questionId) {
             //document.getElementById('centerZone').classList.add('hidden');
-            HighlightQuestionForSeconds(questionId, 1)
+            $(`.player-card`).removeClass('current-player');
+            await HighlightQuestionForSeconds(questionId, 1)
+            await showQuestion(questionId);
         }
 
         // Обработка showquestion

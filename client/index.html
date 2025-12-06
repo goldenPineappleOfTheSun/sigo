@@ -117,7 +117,6 @@
 
         .question-table .question-cell:hover:not(.answered):not(.disabled) {
             background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
         }
 
         .question-table .question-cell.clickable {
@@ -695,88 +694,43 @@
 
         // Обработка maintable (questionstable)
         function handleMainTable(tableText) {
-            const formattedData = parseTableText(tableText);
-            redrawQuestionTable(formattedData);
+            redrawQuestionTable(tableText);
             checkCurrentPlayer();
         }
 
-        // Парсинг текста таблицы
-        function parseTableText(text) {
-            const lines = text.split('\n');
-            const themes = [];
-            let currentTheme = null;
-            
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || trimmed === 'Темы:') continue;
-                
-                if (trimmed.endsWith(':')) {
-                    // Новая тема
-                    if (currentTheme) themes.push(currentTheme);
-                    currentTheme = {
-                        name: trimmed.slice(0, -1),
-                        questions: []
-                    };
-                } else if (trimmed.startsWith('[') && currentTheme) {
-                    // Вопрос
-                    const match = trimmed.match(/\[(\d+)\]\s*(.+)/);
-                    if (match) {
-                        const id = parseInt(match[1]);
-                        const price = match[2].trim();
-                        if (price !== '---') {
-                            currentTheme.questions.push({
-                                id: id,
-                                price: price
-                            });
-                        } else {
-                            gameData.answeredQuestions.add(id);
-                        }
-                    }
-                }
-            }
-            
-            if (currentTheme) themes.push(currentTheme);
-            return themes;
-        }
-
         // Перерисовка таблицы вопросов
-        function redrawQuestionTable(themes) {
+        function redrawQuestionTable(str) {
             const centerZone = document.getElementById('centerZone');
             centerZone.className = 'center-zone';
+            centerZone.innerHTML = '';
             
-            if (themes.length === 0) {
-                centerZone.innerHTML = '<div class="loading">Нет вопросов</div>';
-                return;
-            }
+            const table = document.createElement("table");
+            table.className = 'question-table';
             
-            // Находим максимальное количество вопросов в теме
-            const maxQuestions = Math.max(...themes.map(t => t.questions.length));
+            // Split into category blocks
+            const categories = str.split("||||").map(block => block.split("|"));
             
-            let html = '<table class="question-table"><thead><tr><th>Тема</th>';
-            for (let i = 0; i < maxQuestions; i++) {
-                html += '<th></th>';
-            }
-            html += '</tr></thead><tbody>';
-            
-            themes.forEach(theme => {
-                html += `<tr><td class="theme-cell">${theme.name}</td>`;
-                for (let i = 0; i < maxQuestions; i++) {
-                    if (i < theme.questions.length) {
-                        const q = theme.questions[i];
-                        const answered = gameData.answeredQuestions.has(q.id);
-                        const selected = gameData.selectedQuestionId === q.id;
-                        html += `<td class="question-cell ${answered ? 'answered' : ''} ${selected ? 'selected' : ''}" 
-                            data-question-id="${q.id}" 
-                            ${answered ? '' : 'onclick="selectQuestion(' + q.id + ')"'}>${q.price}</td>`;
-                    } else {
-                        html += '<td></td>';
-                    }
+            // Process each category (row)
+            categories.forEach(cells => {
+                // Remove empty cells from the RIGHT side
+                while (cells.length && cells[cells.length - 1] === "") {
+                    cells.pop();
                 }
-                html += '</tr>';
+                
+                // Create a row only if something remains
+                if (cells.length > 0) {
+                    const tr = document.createElement("tr");
+                    cells.forEach(text => {
+                        const td = document.createElement("td");
+                        td.className = tr.cells.length ? 'question-cell' : 'theme-cell';
+                        td.textContent = text;
+                        tr.appendChild(td);
+                    });
+                    table.appendChild(tr);
+                }
             });
-            
-            html += '</tbody></table>';
-            centerZone.innerHTML = html;
+
+            centerZone.append(table);
         }
 
         // Проверка текущего игрока

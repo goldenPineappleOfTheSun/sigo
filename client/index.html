@@ -702,35 +702,44 @@
         function redrawQuestionTable(str) {
             const centerZone = document.getElementById('centerZone');
             centerZone.className = 'center-zone';
-            centerZone.innerHTML = '';
             
-            const table = document.createElement("table");
-            table.className = 'question-table';
-            
-            // Split into category blocks
-            const categories = str.split("||||").map(block => block.split("|"));
-            
-            // Process each category (row)
-            categories.forEach(cells => {
-                // Remove empty cells from the RIGHT side
-                while (cells.length && cells[cells.length - 1] === "") {
-                    cells.pop();
+            const parts = str.split("|");
+
+            const rows = [];
+            let current = [];
+
+            for (const part of parts) {
+                if (part === "") {
+                    continue;
                 }
                 
-                // Create a row only if something remains
-                if (cells.length > 0) {
-                    const tr = document.createElement("tr");
-                    cells.forEach(text => {
-                        const td = document.createElement("td");
-                        td.className = tr.cells.length ? 'question-cell' : 'theme-cell';
-                        td.textContent = text;
-                        tr.appendChild(td);
-                    });
-                    table.appendChild(tr);
+                // A new theme starts whenever the current row already has content
+                // and this part is NOT a question (i.e., first item after completing row)
+                if (current.length > 0 && isNaN(part)) {
+                    rows.push(current);
+                    current = [];
                 }
+                
+                current.push(part);
+            }
+            if (current.length > 0) rows.push(current);
+
+            // Find maximum number of columns
+            const maxCols = Math.max(...rows.map(r => r.length));
+
+            // Pad rows to max length
+            rows.forEach(r => {
+                while (r.length < maxCols) r.push("");
             });
 
-            centerZone.append(table);
+            // Build HTML table
+            let html = "<table border='1' class='question-table'>\n";
+            rows.forEach(row => {
+                html += "  <tr>" + row.map((cell, i) => `<td class='${i ? 'question-cell' : 'theme-cell'}'>${cell}</td>`).join("") + "</tr>\n";
+            });
+            html += "</table>";
+
+            centerZone.innerHTML = html;
         }
 
         // Проверка текущего игрока

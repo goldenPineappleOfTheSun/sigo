@@ -739,11 +739,16 @@ func handlePlayerState(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+type PlayerAnswerRequest struct {
+    playerId  int
+    timestamp int64
+}
+
 // Дополнительные поля для GameState для управления игрой
 type GameStateInternal struct {
 	acknowledgesReceived    map[int]bool
 	questionShownReceived   map[int]bool
-	requestAnswerReceived   map[int]int64 // playerId -> timestamp
+	requestAnswerReceived   []PlayerAnswerRequest
 	startAcknowledgeReceived map[int]bool
 	selectedQuestionId      string
 	selectedQuestionTime    time.Time
@@ -758,7 +763,7 @@ type GameStateInternal struct {
 var gameStateInternal = &GameStateInternal{
 	acknowledgesReceived:     make(map[int]bool),
 	questionShownReceived:    make(map[int]bool),
-	requestAnswerReceived:    make(map[int]int64),
+	requestAnswerReceived:    make([]PlayerAnswerRequest, 0),
 	startAcknowledgeReceived: make(map[int]bool),
 }
 
@@ -971,7 +976,7 @@ func transitionToQuestion() {
 	if allAcknowledged {
 		gameState.state = StateQuestion
 		gameStateInternal.questionShownReceived = make(map[int]bool)
-		gameStateInternal.requestAnswerReceived = make(map[int]int64)
+		gameStateInternal.requestAnswerReceived = make([]PlayerAnswerRequest, 0)
 
 		// Время показа вопроса (с небольшой задержкой)
 		showTime := time.Now().UTC().Add(500 * time.Millisecond)
@@ -1216,7 +1221,10 @@ func handleRequestAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Сохраняем запрос
-	gameStateInternal.requestAnswerReceived[id] = 0
+	gameStateInternal.requestAnswerReceived = append(gameStateInternal.requestAnswerReceived, PlayerAnswerRequest{
+		playerId:  id,
+		timestamp: 0,
+	})
 
 	// Если это первый запрос, запускаем таймер для обработки
 	if len(gameStateInternal.requestAnswerReceived) == 1 {
@@ -1249,7 +1257,8 @@ func processAnswerRequests() {
 	}*/
 
 	// Находим random player who answered
-	winnerId := time.Now().UnixNano() % int64(len(gameStateInternal.requestAnswerReceived))
+	idx := time.Now().UnixNano() % int64(len(gameStateInternal.requestAnswerReceived))
+	winnerId := gameStateInternal.requestAnswerReceived[idx].playerId
 	log.Printf("winnerId %d", winnerId)
 
 	if winnerId != -1 {
@@ -1259,16 +1268,16 @@ func processAnswerRequests() {
 		})
 
 		// Очищаем остальные запросы
-		gameStateInternal.requestAnswerReceived = make(map[int]int64)
+		gameStateInternal.requestAnswerReceived = make([]PlayerAnswerRequest, 0)
 
 		// Если никто не ответил верно и время вышло, обрабатываем NPC
-		time.AfterFunc(10*time.Second, func() {
+		/*TODO time.AfterFunc(10*time.Second, func() {
 			gameState.mu.Lock()
 			if gameState.state == StateWaitAnswer {
 				processNPCAnswers()
 			}
 			gameState.mu.Unlock()
-		})
+		})*/
 	}
 }
 

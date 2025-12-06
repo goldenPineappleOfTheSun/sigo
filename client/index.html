@@ -889,6 +889,7 @@
             $(`.player-card`).removeClass('current-player');
             await HighlightQuestionForSeconds(questionId, 1)
             await showQuestion(questionId);
+            runAnswerTimer(10);
         }
 
         // Обработка showquestion
@@ -1282,6 +1283,8 @@
         // Обработка waitanswer
         function handleWaitAnswer(waitingPlayerId) {
             freezeTimer();
+            $(`.player-card`).removeClass('current-player');
+            $(`#player-${waitingPlayerId}`).addClass('current-player');
             
             if (waitingPlayerId === playerId) {
                 showAnswerWindow();
@@ -1290,6 +1293,7 @@
 
         // Показ окна ответа
         function showAnswerWindow() {
+            alert('!')
             const window = document.getElementById(`answer-window-${playerId}`);
             if (window) {
                 window.classList.add('visible');
@@ -1466,7 +1470,7 @@
             
             try {
                 const formData = new URLSearchParams();
-                formData.append('id', playerId);
+                formData.append('player', playerId);
                 formData.append('timestamp', Date.now().toString());
                 
                 await fetch(`${getServerUrl()}/requestanswer`, {

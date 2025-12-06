@@ -389,6 +389,21 @@
         .disabled-overlay.visible {
             display: flex;
         }
+
+        .current-player{
+            background-size: 30px 30px;
+            background-image: linear-gradient(45deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%, transparent 50%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.1) 75%, transparent 75%, transparent);
+            animation: barberpole 0.5s linear infinite;
+        }
+
+        @keyframes barberpole {
+            from {
+                background-position: 0 0;
+            }
+            to {
+                background-position: 60px 30px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -593,6 +608,7 @@
                 const playerCard = document.createElement('div');
                 playerCard.className = 'player-card';
                 playerCard.id = `player-${player.id}`;
+                playerCard.setAttribute('data-id', player.id);
                 
                 const avatarUrl = getPlayerAvatar(player.id) || '';
                 

@@ -24,7 +24,7 @@ const (
 	StateJoining          = "joining"
 	StateStartAck         = "wait-start-ack"
 	StateSelectQuestion   = "select-question"
-	StateQuestionAck      = "wait-question-ack"
+	//StateQuestionAck      = "wait-question-ack"
 	StateQuestion         = "question"
 	StateWaitAnswer       = "wait-answer"
 	StateShowAnswer       = "show-answer"
@@ -40,7 +40,7 @@ type GameState struct {
 	currentPlayerId   int
 	roundNum          int
 	gameStartTime     time.Time
-	answeredQuestions map[int]bool
+	answeredQuestions map[string]bool
 	clients           map[*websocket.Conn]bool
 	broadcast         chan []byte
 	upgrader          websocket.Upgrader
@@ -85,7 +85,7 @@ func init() {
 		state:             StateJoining,
 		players:           make(map[int]*Player),
 		nextNPCId:         100,
-		answeredQuestions: make(map[int]bool),
+		answeredQuestions: make(map[string]bool),
 		clients:           make(map[*websocket.Conn]bool),
 		broadcast:         make(chan []byte, 256),
 		upgrader: websocket.Upgrader{
@@ -212,7 +212,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	// Очищаем состояние игры
 	gameState.players = make(map[int]*Player)
 	gameState.nextNPCId = 100
-	gameState.answeredQuestions = make(map[int]bool)
+	gameState.answeredQuestions = make(map[string]bool)
 	gameState.state = StateJoining
 
 	var siqBytes []byte
@@ -745,7 +745,7 @@ type GameStateInternal struct {
 	questionShownReceived   map[int]bool
 	requestAnswerReceived   map[int]int64 // playerId -> timestamp
 	startAcknowledgeReceived map[int]bool
-	selectedQuestionId      int
+	selectedQuestionId      string
 	selectedQuestionTime    time.Time
 	canAnswerTimestamp      int64
 	waitAnswerTimeout       *time.Timer
@@ -823,7 +823,13 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Game started"))
 }
 
+func getQuestionStringId(round int, theme int, question int) (string, error) {
+	result := fmt.Sprintf("%d_%d_%d", round, theme, question)
+	return result, nil
+}
+
 func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
+	log.Printf("call handleSelectQuestion")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -843,50 +849,55 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idQuestStr := r.FormValue("idQuest")
-	idPlayerStr := r.FormValue("idPlayer")
+	log.Printf("handleSelectQuestion query is ok")
 
-	if idQuestStr == "" || idPlayerStr == "" {
+	idRoundString := r.FormValue("round")
+	idThemeString := r.FormValue("theme")
+	idQuestString := r.FormValue("question")
+	idPlayerString := r.FormValue("player")
+
+	if idRoundString == "" || idThemeString == "" || idQuestString == "" || idPlayerString == ""{
 		http.Error(w, "Missing parameters", http.StatusBadRequest)
 		return
 	}
 
-	idQuest, err := strconv.Atoi(idQuestStr)
-	if err != nil {
-		http.Error(w, "Invalid idQuest", http.StatusBadRequest)
-		return
-	}
+	idRound, _ := strconv.Atoi(idRoundString)
+	idTheme, _ := strconv.Atoi(idThemeString)
+	idQuest, _ := strconv.Atoi(idQuestString)
+	stringId, _ := getQuestionStringId(idRound, idTheme, idQuest)
+	idPlayer, _ := strconv.Atoi(idPlayerString)
 
-	idPlayer, err := strconv.Atoi(idPlayerStr)
-	if err != nil {
-		http.Error(w, "Invalid idPlayer", http.StatusBadRequest)
-		return
-	}
+	log.Printf("handleSelectQuestion parameters parsed")
 
 	// Проверяем что это текущий игрок
 	if idPlayer != gameState.currentPlayerId {
+		log.Printf("Not current player")
 		http.Error(w, "Not current player", http.StatusBadRequest)
 		return
 	}
 
 	// Проверяем что вопрос еще не отвечен
-	if gameState.answeredQuestions[idQuest] {
+	if gameState.answeredQuestions[stringId] {
+		log.Printf("Question already answered")
 		http.Error(w, "Question already answered", http.StatusBadRequest)
 		return
 	}
 
-	gameStateInternal.selectedQuestionId = idQuest
-	gameState.state = StateQuestionAck
-	gameStateInternal.acknowledgesReceived = make(map[int]bool)
+	gameStateInternal.selectedQuestionId = stringId
+	//gameStateInternal.acknowledgesReceived = make(map[int]bool)
+
+	log.Printf("select question %s", stringId)
 
 	// Отправляем оповещение
 	gameState.broadcastMessage("questionselected", map[string]interface{}{
-		"id":        idQuest,
+		"id":        stringId,
 		"isspecial": false,
 	})
 
+	gameState.state = StateQuestion
+
 	// Таймаут для acknowledge
-	if gameStateInternal.acknowledgeTimeout != nil {
+	/*if gameStateInternal.acknowledgeTimeout != nil {
 		gameStateInternal.acknowledgeTimeout.Stop()
 	}
 	gameStateInternal.acknowledgeTimeout = time.AfterFunc(5*time.Second, func() {
@@ -895,7 +906,7 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 			transitionToQuestion()
 		}
 		gameState.mu.Unlock()
-	})
+	})*/
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Question selected"))
@@ -957,7 +968,7 @@ func transitionToQuestion() {
 		}
 	}
 
-	if allAcknowledged || gameState.state == StateQuestionAck {
+	if allAcknowledged {
 		gameState.state = StateQuestion
 		gameStateInternal.questionShownReceived = make(map[int]bool)
 		gameStateInternal.requestAnswerReceived = make(map[int]int64)
@@ -1290,7 +1301,7 @@ func processNPCAnswers() {
 		answer := generateAnswer(player)
 		if answer.HaveAnswer {
 			// Отправляем ответ через /answer (как будто NPC сам отправил)
-			formData := fmt.Sprintf("id-quest=%d&id-player=%d&text=%s", 
+			formData := fmt.Sprintf("id-quest=%s&id-player=%d&text=%s", 
 				selectedQuestionId, id, answer.Answer)
 			req, _ := http.NewRequest("POST", "http://localhost:8080/answer", strings.NewReader(formData))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1321,7 +1332,7 @@ func processNPCAnswers() {
 }
 
 func handleAnswer(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	/*TODO if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -1364,11 +1375,12 @@ func handleAnswer(w http.ResponseWriter, r *http.Request) {
 	checkAndProcessAnswer(idQuest, idPlayer, text)
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Answer processed"))
+	w.Write([]byte("Answer processed"))*/
 }
 
-func checkAndProcessAnswer(idQuest int, idPlayer int, answerText string) bool {
-	result, comment := checkAnswer(idQuest, answerText)
+func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool {
+	return false
+	/* TODO result, comment := checkAnswer(idQuest, answerText)
 	
 	// Отправляем validated
 	gameState.broadcastMessage("validated", map[string]interface{}{
@@ -1422,7 +1434,7 @@ func checkAndProcessAnswer(idQuest int, idPlayer int, answerText string) bool {
 		})
 		return true
 	}
-	return false
+	return false*/
 }
 
 func transitionToSelectQuestion(answeredPlayerId int) {
@@ -1806,9 +1818,11 @@ type NPCAnswer struct {
 }
 
 func generateAnswer(npc *Player) NPCAnswer {
+	return NPCAnswer{HaveAnswer: false}
+
 	// Простая логика: случайно решает ответить или нет
 	// В реальной игре здесь может быть более сложная логика
-	if time.Now().UnixNano()%3 == 0 {
+	/*if time.Now().UnixNano()%3 == 0 {
 		// Пытается ответить (простой случайный ответ)
 		gameState.mu.RLock()
 		packageJson := gameState.packageJson
@@ -1839,7 +1853,7 @@ func generateAnswer(npc *Player) NPCAnswer {
 		}
 	}
 
-	return NPCAnswer{HaveAnswer: false}
+	return NPCAnswer{HaveAnswer: false}*/
 }
 
 func isThereNextRound(currentRound int) bool {

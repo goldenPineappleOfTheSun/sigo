@@ -132,13 +132,15 @@
             visibility: hidden;
         }
 
-        .question-table .question-cell.selected {
+        .question-table .question-cell.selected,
+        .question-table .question-cell.disabled.selected {
             animation: blink 0.2s infinite;
+            opacity: 1;
         }
 
         @keyframes blink {
             0%, 100% { background: rgba(255, 255, 255, 0.3); }
-            50% { background: rgba(255, 215, 0, 0.8); }
+            50% { background: rgba(181, 244, 255, 0.8); }
         }
 
         /* Медиа контент */
@@ -759,7 +761,7 @@
                 html += "  <tr>" + row.map((cell, i) => {
                     let onclick = `selectQuestion(${roundNum}, ${row_i+1}, ${i+1})`
                     let baseClass = i ? 'question-cell' : 'theme-cell';
-                    let stringId = i ? 'question-cell-' + createQuestionId(roundNum, row_i+1, i+1) : '';
+                    let stringId = i ? 'question-cell-' + getQuestionId(roundNum, row_i+1, i+1) : '';
                     return `<td class='${baseClass} ${stringId}' onclick="${onclick}">${cell}</td>`
                 }).join("") + "</tr>\n";
             });
@@ -805,12 +807,12 @@
             });
         }
 
-        function createQuestionId(roundNum, themeNum, questionNum) {
+        function getQuestionId(roundNum, themeNum, questionNum) {
             return `${roundNum}_${themeNum}_${questionNum}`
         }
 
-        function HighlightQuestionForSeconds(roundNum, themeNum, questionNum, sec) {
-            const cell = $(`.question-cell-${createQuestionId(roundNum, themeNum, questionNum)}`)
+        function HighlightQuestionForSeconds(questionStringId, sec) {
+            const cell = $(`.question-cell-${questionStringId}`)
             cell.addClass('selected')
             setTimeout(() => {
                 cell.removeClass('selected')
@@ -819,15 +821,27 @@
 
         // Выбор вопроса
         async function selectQuestion(roundNum, themeNum, questionNum) {
-            disableQuestionButtons();
-            gameData.selectedQuestionId = createQuestionId(roundNum, themeNum, questionNum);
-            const cell = $(`.question-cell-${createQuestionId(roundNum, themeNum, questionNum)}`)
+            gameData.selectedQuestionId = getQuestionId(roundNum, themeNum, questionNum);
+            const cell = $(`.question-cell-${getQuestionId(roundNum, themeNum, questionNum)}`)
             if (cell.hasClass('disabled')) {
                 console.log('cant')
                 return;
             }
 
-            await HighlightQuestionForSeconds(roundNum, themeNum, questionNum, 1)
+            disableQuestionButtons();
+
+            const formData = new URLSearchParams();
+            formData.append('round', roundNum);
+            formData.append('theme', themeNum);
+            formData.append('question', questionNum);
+            formData.append('player', playerId);
+
+            await fetch(`${getServerUrl()}/selectquestion`, {
+                method: 'POST',
+                body: formData
+            });
+
+            //await HighlightQuestionForSeconds(roundNum, themeNum, questionNum, 1)
             
             // Подсветка выбранного вопроса
             /*document.querySelectorAll('.question-cell').forEach(cell => {
@@ -853,7 +867,8 @@
 
         // Обработка questionselected
         function handleQuestionSelected(questionId) {
-            document.getElementById('centerZone').classList.add('hidden');
+            //document.getElementById('centerZone').classList.add('hidden');
+            HighlightQuestionForSeconds(questionId, 1)
         }
 
         // Обработка showquestion

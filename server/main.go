@@ -1098,30 +1098,13 @@ func handleStartAcknowledge(w http.ResponseWriter, r *http.Request) {
 	gameStateInternal.startAcknowledgeReceived[id] = true
 	log.Printf("player acknoledged %i", id)
 
-	// если таймер ещё не запущен — запускаем
-	/*if !acknowledgeWaitStarted {
-		acknowledgeWaitStarted = true
-		startWaitingForAcknowledges()
-	}*/
-
 	// проверяем, не все ли уже ответили
 	transitionToSelectQuestionAfterStart()
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Start acknowledged"))
 }
-/*
-func startWaitingForAcknowledges() {
-	go func() {
-		// время ожидания — меняешь как хочешь
-		log.Printf("call startWaitingForAcknowledges()")
-		time.AfterFunc(15 * time.Second, func() {
-			log.Printf("startWaitingForAcknowledges Force!")
-			transitionToSelectQuestionForced()
-		})
-	}()
-}
-*/
+
 func handleQuestionBeenShown(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1201,6 +1184,8 @@ func handleRequestAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	gameState.broadcastMessage("stoptimer", map[string]interface{}{})
+
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, "Error parsing form", http.StatusBadRequest)
@@ -1243,18 +1228,14 @@ func processAnswerRequests() {
 	log.Printf("call processAnswerRequests()")
 
 	if gameState.state != StateQuestion {
+		log.Printf("call processAnswerRequests stopped because state is %s", gameState.state)
 		return
 	}
 
-	/*minTimestamp := int64(^uint64(0) >> 1)
-	winnerId := -1
-
-	for id, ts := range gameStateInternal.requestAnswerReceived {
-		if ts < minTimestamp {
-			minTimestamp = ts
-			winnerId = id
-		}
-	}*/
+	if (len(gameStateInternal.requestAnswerReceived) == 0) {
+		log.Printf("no more people answered")
+		return
+	}
 
 	// Находим random player who answered
 	idx := time.Now().UnixNano() % int64(len(gameStateInternal.requestAnswerReceived))
@@ -1267,82 +1248,19 @@ func processAnswerRequests() {
 			"playerId": winnerId,
 		})
 
-		// Очищаем остальные запросы
-		gameStateInternal.requestAnswerReceived = make([]PlayerAnswerRequest, 0)
-
-		// Если никто не ответил верно и время вышло, обрабатываем NPC
-		/*TODO time.AfterFunc(10*time.Second, func() {
-			gameState.mu.Lock()
-			if gameState.state == StateWaitAnswer {
-				processNPCAnswers()
-			}
-			gameState.mu.Unlock()
-		})*/
+		// Исключаем победителя
+		gameStateInternal.requestAnswerReceived = append(
+			gameStateInternal.requestAnswerReceived[:idx],
+            gameStateInternal.requestAnswerReceived[idx+1:]...)
 	}
 }
 
 func processNPCAnswers() {
-	gameState.mu.Lock()
-	if gameState.state != StateWaitAnswer {
-		gameState.mu.Unlock()
-		return
-	}
 
-	selectedQuestionId := gameStateInternal.selectedQuestionId
-	playersCopy := make(map[int]*Player)
-	for k, v := range gameState.players {
-		playersCopy[k] = v
-	}
-	gameState.mu.Unlock()
-
-	// Обрабатываем NPC по очереди
-	for id, player := range playersCopy {
-		if !player.IsNPC {
-			continue
-		}
-
-		gameState.mu.Lock()
-		if gameState.state != StateWaitAnswer {
-			gameState.mu.Unlock()
-			return
-		}
-		gameState.mu.Unlock()
-
-		answer := generateAnswer(player)
-		if answer.HaveAnswer {
-			// Отправляем ответ через /answer (как будто NPC сам отправил)
-			formData := fmt.Sprintf("id-quest=%s&id-player=%d&text=%s", 
-				selectedQuestionId, id, answer.Answer)
-			req, _ := http.NewRequest("POST", "http://localhost:8080/answer", strings.NewReader(formData))
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			resp, err := http.DefaultClient.Do(req)
-			if err == nil {
-				resp.Body.Close()
-			}
-
-			// Проверяем изменилось ли состояние (если ответ был верный)
-			gameState.mu.RLock()
-			stateChanged := gameState.state != StateWaitAnswer
-			gameState.mu.RUnlock()
-			if stateChanged {
-				return // Прекращаем если бот ответил верно
-			}
-		}
-	}
-
-	// Если никто не ответил верно, переходим к следующему вопросу
-	gameState.mu.Lock()
-	if gameState.state == StateWaitAnswer {
-		// Помечаем вопрос как отвеченный (неверно)
-		gameState.answeredQuestions[selectedQuestionId] = true
-		// Переходим к следующему вопросу (current player не меняется)
-		transitionToSelectQuestion(0) // 0 означает что никто не ответил верно
-	}
-	gameState.mu.Unlock()
 }
 
 func handleAnswer(w http.ResponseWriter, r *http.Request) {
-	/*TODO if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -1361,18 +1279,13 @@ func handleAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idQuestStr := r.FormValue("id-quest")
+	idQuest:= r.FormValue("id-quest")
 	idPlayerStr := r.FormValue("id-player")
 	text := r.FormValue("text")
+	log.Printf("call handleAnswer(%s, %s, %s)", idQuest, idPlayerStr, text)
 
-	if idQuestStr == "" || idPlayerStr == "" {
+	if idQuest == "" || idPlayerStr == "" {
 		http.Error(w, "Missing parameters", http.StatusBadRequest)
-		return
-	}
-
-	idQuest, err := strconv.Atoi(idQuestStr)
-	if err != nil {
-		http.Error(w, "Invalid idQuest", http.StatusBadRequest)
 		return
 	}
 
@@ -1385,66 +1298,38 @@ func handleAnswer(w http.ResponseWriter, r *http.Request) {
 	checkAndProcessAnswer(idQuest, idPlayer, text)
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Answer processed"))*/
+	w.Write([]byte("Answer processed"))
 }
 
 func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool {
-	return false
-	/* TODO result, comment := checkAnswer(idQuest, answerText)
-	
-	// Отправляем validated
+	log.Printf("call checkAndProcessAnswer(%s, %d, %s)", idQuest, idPlayer, answerText)
+
+	result := false
+	unfreeze := len(gameStateInternal.requestAnswerReceived) == 0
+
 	gameState.broadcastMessage("validated", map[string]interface{}{
 		"idQuest":  idQuest,
 		"idPlayer": idPlayer,
 		"result":   result,
+		"unfreeze": unfreeze,
 	})
 
-	// Отправляем showmantalk
-	gameState.broadcastMessage("showmantalk", map[string]interface{}{
-		"text": comment,
-	})
-
-	// Отправляем playertalk
-	playerText := answerText
-	if answerText == "" {
-		playerText = "не знаю"
+	// остались люди, кто нажал на кнопку
+	if (!result && !unfreeze) {
+		log.Printf("ball to other player")
+		gameState.state = StateQuestion
+		processAnswerRequests();
+		return result
 	}
-	gameState.broadcastMessage("playertalk", map[string]interface{}{
-		"playerId": idPlayer,
-		"text":     playerText,
-	})
-
-	// Обновляем очки
-	player := gameState.players[idPlayer]
-	if player != nil {
-		points := getPointsForQuestion(idQuest)
-		if result {
-			player.Score += points
-		} else {
-			player.Score -= points
-		}
+	
+	// остались люди кто еще не попробовал ответить
+	if (!result && true) {
+		gameState.state = StateQuestion
+		return result
 	}
 
-	// Если ответ верный, переходим в show-answer
-	if result {
-		gameState.answeredQuestions[idQuest] = true
-		gameState.state = StateShowAnswer
-		gameState.broadcastMessage("showanswer", map[string]interface{}{
-			"questId": idQuest,
-		})
-
-		// Таймер на 10 секунд
-		if gameStateInternal.showAnswerTimeout != nil {
-			gameStateInternal.showAnswerTimeout.Stop()
-		}
-		gameStateInternal.showAnswerTimeout = time.AfterFunc(10*time.Second, func() {
-			gameState.mu.Lock()
-			transitionToSelectQuestion(idPlayer)
-			gameState.mu.Unlock()
-		})
-		return true
-	}
-	return false*/
+	// переходим к вопросам
+	return result
 }
 
 func transitionToSelectQuestion(answeredPlayerId int) {
@@ -1497,41 +1382,7 @@ func transitionToSelectQuestion(answeredPlayerId int) {
 }
 
 func handleNPCTurn() {
-	/*log.Printf("call handleNPCTurn()")
-	// Небольшая задержка
-	time.Sleep(1 * time.Second)
-
-	gameState.mu.Lock()
-	currentPlayerId := gameState.currentPlayerId
-	roundNum := gameState.roundNum
-	answeredQuestions := make(map[int]bool)
-	for k, v := range gameState.answeredQuestions {
-		answeredQuestions[k] = v
-	}
-	gameState.mu.Unlock()*/
-
-	// Получаем доступные вопросы
-	/*TODO themes := getThemesForRound(roundNum)
-	availableQuestions := make([]int, 0)
-	for _, theme := range themes {
-		questions := getQuestionsForTheme(theme)
-		for _, q := range questions {
-			if !answeredQuestions[q.ID] {
-				availableQuestions = append(availableQuestions, q.ID)
-			}
-		}
-	}
-
-	if len(availableQuestions) > 0 {
-		// Случайный выбор вопроса
-		selectedId := availableQuestions[time.Now().UnixNano()%int64(len(availableQuestions))]
-
-		// Отправляем запрос на выбор вопроса
-		formData := fmt.Sprintf("idQuest=%d&idPlayer=%d", selectedId, currentPlayerId)
-		req, _ := http.NewRequest("POST", "http://localhost:8080/selectquestion", strings.NewReader(formData))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		http.DefaultClient.Do(req)
-	}*/
+	
 }
 
 // Функции для работы с вопросами
@@ -1553,32 +1404,6 @@ func getQuestionsTable(roundNum int) string {
 	}
 
 	return strings.Join(result, "|")
-
-	/*gameState.mu.RLock()
-	answeredQuestions := make(map[int]bool)
-	for k, v := range gameState.answeredQuestions {
-		answeredQuestions[k] = v
-	}
-	gameState.mu.RUnlock()
-
-	themes := getThemesForRound(roundNum)
-	
-	var table strings.Builder
-	table.WriteString("Темы:\n")
-	
-	for _, theme := range themes {
-		questions := getQuestionsForTheme(theme)
-		table.WriteString(fmt.Sprintf("\n%s:\n", theme.Name))
-		for _, q := range questions {
-			if !answeredQuestions[q.ID] {
-				table.WriteString(fmt.Sprintf("  [%d] %d\n", q.ID, q.Price))
-			} else {
-				table.WriteString(fmt.Sprintf("  [%d] ---\n", q.ID))
-			}
-		}
-	}
-	
-	return table.String()*/
 }
 
 func getThemesCountForRound(roundNum int) int {
@@ -1614,166 +1439,6 @@ func getQuestionPrice(roundNum int, themeNum int, questNum int) string {
 	path := fmt.Sprintf("rounds.0.round.%d.themes.0.theme.%d.questions.0.question.%d.@price", roundNum, themeNum, questNum)
 	return gjson.Get(jsonString, path).String()
 }
-
-/*func getThemesForRound(roundNum int) []string {
-	rounds := gameState.packageJson["rounds"].([]interface{})                      // → [] of rounds
-    roundList := rounds[0].(map[string]interface{})["round"].([]interface{})
-    round := roundList[roundNum].(map[string]interface{})        // → selected round
-    themesList := round["themes"].([]interface{})                // → [] of themes
-    themeBlock := themesList[0].(map[string]interface{})         // → themes[0]
-    themeArray := themeBlock["theme"].([]interface{})            // → [] of theme items
-    names := make([]string, 0, len(themeArray))
-    for _, t := range themeArray {
-        name := t.(map[string]interface{})["@name"].(string)
-        names = append(names, name)
-    }
-	return string
-}	
-
-func getPricesForTheme(roundNum int, )*/
-
-/*func getThemesForRound(roundNum int) []Theme {
-	gameState.mu.RLock()
-	packageJson := gameState.packageJson
-	gameState.mu.RUnlock()
-
-	if packageJson == nil {
-		return []Theme{}
-	}
-
-	// Новая структура: {"rounds": [{"round": [{"@name": "...", "themes": [...]}]}]}
-	rounds, ok := packageJson["rounds"].([]interface{})
-	if !ok || roundNum < 1 || roundNum > len(rounds) {
-		return []Theme{}
-	}
-
-	// Подсчитываем количество вопросов в предыдущих раундах для правильной нумерации
-	questionCounter := 1
-	for i := 0; i < roundNum-1; i++ {
-		prevRoundMap := rounds[i].(map[string]interface{})
-		prevRoundArray, ok := prevRoundMap["round"].([]interface{})
-		if !ok || len(prevRoundArray) == 0 {
-			continue
-		}
-		prevRoundItem := prevRoundArray[0].(map[string]interface{})
-		prevThemesData, ok := prevRoundItem["themes"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, themeData := range prevThemesData {
-			themeMap, ok := themeData.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			themeArray, ok := themeMap["theme"].([]interface{})
-			if !ok || len(themeArray) == 0 {
-				continue
-			}
-			themeItem := themeArray[0].(map[string]interface{})
-			questionsData, ok := themeItem["questions"].([]interface{})
-			if ok {
-				for _, qData := range questionsData {
-					qMap, ok := qData.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					questionArray, ok := qMap["question"].([]interface{})
-					if ok && len(questionArray) > 0 {
-						questionCounter++
-					}
-				}
-			}
-		}
-	}
-
-	roundMap := rounds[roundNum-1].(map[string]interface{})
-	roundArray, ok := roundMap["round"].([]interface{})
-	if !ok || len(roundArray) == 0 {
-		return []Theme{}
-	}
-
-	roundItem := roundArray[0].(map[string]interface{})
-	themesData, ok := roundItem["themes"].([]interface{})
-	if !ok {
-		return []Theme{}
-	}
-
-	themes := make([]Theme, 0)
-
-	for _, themeData := range themesData {
-		themeMap, ok := themeData.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		themeArray, ok := themeMap["theme"].([]interface{})
-		if !ok || len(themeArray) == 0 {
-			continue
-		}
-
-		themeItem := themeArray[0].(map[string]interface{})
-		themeName := getString(themeItem, "@name")
-		
-		theme := Theme{
-			Name:      themeName,
-			Questions: []Question{},
-		}
-
-		questionsData, ok := themeItem["questions"].([]interface{})
-		if ok {
-			for _, qData := range questionsData {
-				qMap, ok := qData.(map[string]interface{})
-				if !ok {
-					continue
-				}
-
-				questionArray, ok := qMap["question"].([]interface{})
-				if !ok || len(questionArray) == 0 {
-					continue
-				}
-
-				questionItem := questionArray[0].(map[string]interface{})
-				
-				// Извлекаем цену из @price
-				priceStr := getString(questionItem, "@price")
-				price, err := strconv.Atoi(priceStr)
-				if err != nil {
-					price = 0
-				}
-
-				// Извлекаем текст вопроса
-				questionText := ""
-				if params, ok := questionItem["params"].([]interface{}); ok {
-					for _, paramGroup := range params {
-						if paramGroupMap, ok := paramGroup.(map[string]interface{}); ok {
-							if paramArray, ok := paramGroupMap["param"].([]interface{}); ok {
-								for _, param := range paramArray {
-									if text := extractTextFromParam(param, "question"); text != "" {
-										questionText = text
-										break
-									}
-								}
-							}
-						}
-					}
-				}
-
-				theme.Questions = append(theme.Questions, Question{
-					ID:    questionCounter,
-					Price: price,
-					Theme: themeName,
-					Text:  questionText,
-				})
-				
-				questionCounter++
-			}
-		}
-
-		themes = append(themes, theme)
-	}
-
-	return themes
-}*/
 
 func getQuestionsForTheme(theme Theme) []Question {
 	return theme.Questions
@@ -1829,41 +1494,6 @@ type NPCAnswer struct {
 
 func generateAnswer(npc *Player) NPCAnswer {
 	return NPCAnswer{HaveAnswer: false}
-
-	// Простая логика: случайно решает ответить или нет
-	// В реальной игре здесь может быть более сложная логика
-	/*if time.Now().UnixNano()%3 == 0 {
-		// Пытается ответить (простой случайный ответ)
-		gameState.mu.RLock()
-		packageJson := gameState.packageJson
-		selectedQuestionId := gameStateInternal.selectedQuestionId
-		gameState.mu.RUnlock()
-
-		// Используем вспомогательную функцию для поиска вопроса
-		_, correctAnswer, _ := findQuestionById(packageJson, selectedQuestionId)
-		
-		if correctAnswer != "" {
-			// Случайно решает ответить правильно или неправильно
-			if time.Now().UnixNano()%2 == 0 {
-				return NPCAnswer{
-					HaveAnswer: true,
-					Answer:     correctAnswer,
-				}
-			} else {
-				return NPCAnswer{
-					HaveAnswer: true,
-					Answer:     "Не знаю",
-				}
-			}
-		}
-
-		return NPCAnswer{
-			HaveAnswer: true,
-			Answer:     "Не знаю",
-		}
-	}
-
-	return NPCAnswer{HaveAnswer: false}*/
 }
 
 func isThereNextRound(currentRound int) bool {

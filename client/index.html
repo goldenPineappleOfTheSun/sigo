@@ -712,8 +712,11 @@
                 case 'waitanswer':
                     handleWaitAnswer(message.playerId);
                     break;
+                case 'stoptimer':
+                    handleStopTimer();
+                    break;
                 case 'validated':
-                    handleValidated(message.idQuest, message.idPlayer, message.result);
+                    handleValidated(message.idQuest, message.idPlayer, message.result, message.unfreeze);
                     break;
                 case 'showanswer':
                     handleShowAnswer(message.questId);
@@ -858,34 +861,11 @@
                 method: 'POST',
                 body: formData
             });
-
-            //await HighlightQuestionForSeconds(roundNum, themeNum, questionNum, 1)
-            
-            // Подсветка выбранного вопроса
-            /*document.querySelectorAll('.question-cell').forEach(cell => {
-                cell.classList.remove('selected');
-                if (parseInt(cell.dataset.questionId) === questionId) {
-                    cell.classList.add('selected');
-                }
-            });
-            
-            try {
-                const formData = new URLSearchParams();
-                formData.append('idQuest', questionId);
-                formData.append('idPlayer', playerId);
-                
-                await fetch(`${getServerUrl()}/selectquestion`, {
-                    method: 'POST',
-                    body: formData
-                });
-            } catch (error) {
-                console.error('Ошибка выбора вопроса:', error);
-            }*/
         }
 
         // Обработка questionselected
         async function handleQuestionSelected(questionId) {
-            //document.getElementById('centerZone').classList.add('hidden');
+            gameData.selectedQuestionId = questionId;
             $(`.player-card`).removeClass('current-player');
             await HighlightQuestionForSeconds(questionId, 1)
             await showQuestion(questionId);
@@ -894,27 +874,7 @@
 
         // Обработка showquestion
         async function handleShowQuestion(questionId) {
-            // Отправляем acknowledge
-            /*try {
-                const formData = new URLSearchParams();
-                formData.append('id', playerId);
-                await fetch(`${getServerUrl()}/acknowledge`, {
-                    method: 'POST',
-                    body: formData
-                });
-            } catch (error) {
-                console.error('Ошибка acknowledge:', error);
-            }
-            
-            // Устанавливаем таймаут
-            const delay = startTime - Date.now();
-            if (delay > 0) {
-                setTimeout(() => {
-                    showQuestion(questionId, 0);
-                }, delay);
-            } else {
-                showQuestion(questionId, 0);
-            }*/
+
         }
 
         // Показ вопроса
@@ -1218,31 +1178,6 @@
             gameData.questionTimer.running = true;
             gameData.questionTimer.lastTimestamp = +new Date();
             enableAnswerButton()
-            /*if (gameData.progressTimer) {
-                clearInterval(gameData.progressTimer);
-            }
-            
-            if (!gameData.questionStartTime) {
-                gameData.questionStartTime = Date.now();
-            }
-            
-            const duration = gameData.questionDuration;
-            
-            gameData.progressTimer = setInterval(() => {
-                const elapsed = Date.now() - gameData.questionStartTime;
-                const remaining = Math.max(0, duration - elapsed);
-                const percentage = (remaining / duration) * 100;
-                
-                // Обновляем прогресс-бары всех игроков
-                document.querySelectorAll('.player-progress-fill').forEach(bar => {
-                    bar.style.width = percentage + '%';
-                });
-                
-                if (remaining === 0) {
-                    clearInterval(gameData.progressTimer);
-                    disableAnswerButton();
-                }
-            }, 100);*/
         }
 
         function stopAnswerTimer() {
@@ -1254,35 +1189,18 @@
         // Заморозка таймера
         function freezeTimer() {
             gameData.questionTimer.running = false;
-            disableAnswerButton()
-            /*if (gameData.progressTimer) {
-                clearInterval(gameData.progressTimer);
-                gameData.progressTimer = null;
-            }
-            document.querySelectorAll('.player-progress-fill').forEach(bar => {
-                bar.classList.add('frozen');
-            });*/
         }
 
         // Разморозка таймера
         function unfreezeTimer() {
             gameData.questionTimer.running = true;
             gameData.questionTimer.lastTimestamp = +new Date()
-            enableAnswerButton()
-            /*document.querySelectorAll('.player-progress-fill').forEach(bar => {
-                bar.classList.remove('frozen');
-            });
-            // Восстанавливаем время начала с учетом заморозки
-            if (gameData.questionStartTime) {
-                const elapsed = Date.now() - gameData.questionStartTime;
-                gameData.questionStartTime = Date.now() - elapsed;
-            }
-            startAnswerTimer();*/
         }
 
         // Обработка waitanswer
         function handleWaitAnswer(waitingPlayerId) {
             freezeTimer();
+            disableAnswerButton()
             $(`.player-card`).removeClass('current-player');
             $(`#player-${waitingPlayerId}`).addClass('current-player');
             
@@ -1293,7 +1211,6 @@
 
         // Показ окна ответа
         function showAnswerWindow() {
-            alert('!')
             const window = document.getElementById(`answer-window-${playerId}`);
             if (window) {
                 window.classList.add('visible');
@@ -1338,102 +1255,37 @@
             }
         }
 
+        function handleStopTimer() {
+            freezeTimer();
+        }
+
         // Обработка validated
-        function handleValidated(idQuest, idPlayer, result) {
-            if (result) {
-                // Правильный ответ
-                freezeTimer();
-                disableAnswerButton();
+        function handleValidated(idQuest, idPlayer, result, unfreeze) {
+            if (unfreeze) {
+                unfreezeTimer()
+            }
+            if (!gameData.answeredQuestions.has(idQuest)) {
                 gameData.answeredQuestions.add(idQuest);
-                updateScores();
-            } else {
-                // Неправильный ответ
-                if (idPlayer === playerId) {
-                    disableAnswerButton();
-                } else {
-                    unfreezeTimer();
+                if (idPlayer !== playerId) {
+                    enableAnswerButton();
                 }
             }
+            setTimeout(updateScores, 1000);
         }
 
         // Обработка showanswer
         async function handleShowAnswer(questId) {
-            /*const answer = findAnswerById(questId);
-            if (answer) {
-                await displayAnswer(answer);
-            }*/
+            
         }
 
         // Поиск ответа по ID вопроса
         function findAnswerById(questionId) {
-            /*const question = findQuestionById(questionId);
-            if (!question) return null;
-            
-            const media = [];
-            
-            // Ищем ответ в структуре вопроса
-            if (question.right) {
-                const rightData = Array.isArray(question.right) ? question.right[0] : question.right;
-                if (rightData && rightData.answer) {
-                    const answerData = Array.isArray(rightData.answer) ? answerData.answer[0] : rightData.answer;
-                    if (answerData && answerData['#text']) {
-                        media.push({ type: 'text', content: answerData['#text'] });
-                    }
-                }
-            }
-            
-            // Также проверяем params с именем "answer"
-            if (question.params) {
-                const params = Array.isArray(question.params) ? question.params : [question.params];
-                for (const paramGroup of params) {
-                    const paramList = Array.isArray(paramGroup.param) ? paramGroup.param : [paramGroup.param];
-                    for (const param of paramList) {
-                        if (param && param['@name'] === 'answer' && param.item) {
-                            const items = Array.isArray(param.item) ? param.item : [param.item];
-                            for (const item of items) {
-                                if (typeof item === 'string') {
-                                    media.push({ type: 'text', content: item });
-                                } else if (item['#text'] !== undefined) {
-                                    const text = item['#text'];
-                                    const type = item['@type'];
-                                    const isRef = item['@isRef'] === 'True' || item['@isRef'] === true;
-                                    
-                                    if (isRef && type) {
-                                        if (type === 'image' || text.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                                            media.push({ type: 'image', content: text });
-                                        } else if (type === 'video' || text.match(/\.(mp4|avi|mov|webm)$/i)) {
-                                            media.push({ type: 'video', content: text });
-                                        } else {
-                                            media.push({ type: 'text', content: text });
-                                        }
-                                    } else {
-                                        media.push({ type: 'text', content: text });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            return media.length > 0 ? media : null;*/
+
         }
 
         // Отображение ответа
         async function displayAnswer(mediaItems) {
-            /*const centerZone = document.getElementById('centerZone');
-            centerZone.classList.remove('hidden');
-            
-            if (mediaItems && mediaItems.length > 0) {
-                for (let i = 0; i < mediaItems.length; i++) {
-                    displayMedia(mediaItems[i]);
-                    if (i < mediaItems.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                    }
-                }
-            } else {
-                centerZone.innerHTML = '<div class="loading">Ответ</div>';
-            }*/
+
         }
 
         // Реплика ведущего

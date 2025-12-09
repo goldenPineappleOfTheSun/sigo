@@ -134,6 +134,7 @@ func main() {
 	http.Handle("/questionbeenshown",withCORS(http.HandlerFunc(handleQuestionBeenShown)))
 	http.Handle("/requestanswer",    withCORS(http.HandlerFunc(handleRequestAnswer)))
 	http.Handle("/answer",           withCORS(http.HandlerFunc(handleAnswer)))
+	http.Handle("/timerdone",        withCORS(http.HandlerFunc(handleTimerDone)))
 	http.Handle("/ws",               withCORS(http.HandlerFunc(handleWebSocket)))
 
 	log.Println("Server starting on :8080")
@@ -746,24 +747,26 @@ type PlayerAnswerRequest struct {
 
 // Дополнительные поля для GameState для управления игрой
 type GameStateInternal struct {
-	acknowledgesReceived    map[int]bool
-	questionShownReceived   map[int]bool
-	requestAnswerReceived   []PlayerAnswerRequest
+	acknowledgesReceived     map[int]bool
+	questionShownReceived    map[int]bool
+	requestAnswerReceived    []PlayerAnswerRequest
+	playersAnswered          []int
 	startAcknowledgeReceived map[int]bool
-	selectedQuestionId      string
-	selectedQuestionTime    time.Time
-	canAnswerTimestamp      int64
-	waitAnswerTimeout       *time.Timer
-	acknowledgeTimeout      *time.Timer
-	questionShownTimeout    *time.Timer
-	showAnswerTimeout       *time.Timer
-	startAcknowledgeTimeout *time.Timer
+	selectedQuestionId       string
+	selectedQuestionTime     time.Time
+	canAnswerTimestamp       int64
+	waitAnswerTimeout        *time.Timer
+	acknowledgeTimeout       *time.Timer
+	questionShownTimeout     *time.Timer
+	showAnswerTimeout        *time.Timer
+	startAcknowledgeTimeout  *time.Timer
 }
 
 var gameStateInternal = &GameStateInternal{
 	acknowledgesReceived:     make(map[int]bool),
 	questionShownReceived:    make(map[int]bool),
 	requestAnswerReceived:    make([]PlayerAnswerRequest, 0),
+	playersAnswered      :    make([]int, 0),
 	startAcknowledgeReceived: make(map[int]bool),
 }
 
@@ -977,6 +980,7 @@ func transitionToQuestion() {
 		gameState.state = StateQuestion
 		gameStateInternal.questionShownReceived = make(map[int]bool)
 		gameStateInternal.requestAnswerReceived = make([]PlayerAnswerRequest, 0)
+		gameStateInternal.playersAnswered       = make([]int, 0)
 
 		// Время показа вопроса (с небольшой задержкой)
 		showTime := time.Now().UTC().Add(500 * time.Millisecond)
@@ -1210,6 +1214,10 @@ func handleRequestAnswer(w http.ResponseWriter, r *http.Request) {
 		playerId:  id,
 		timestamp: 0,
 	})
+	if !contains(gameStateInternal.playersAnswered, id) {
+		gameStateInternal.playersAnswered = append(gameStateInternal.playersAnswered, id)
+	}
+	
 
 	// Если это первый запрос, запускаем таймер для обработки
 	if len(gameStateInternal.requestAnswerReceived) == 1 {
@@ -1301,11 +1309,50 @@ func handleAnswer(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Answer processed"))
 }
 
+func handleTimerDone(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	gameState.mu.Lock()
+	defer gameState.mu.Unlock()
+
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
+
+	idPlayerStr := r.FormValue("id-player")
+	log.Printf("call handleTimerDone(%s)", idPlayerStr)
+
+	if idPlayerStr == "" {
+		http.Error(w, "Missing parameters", http.StatusBadRequest)
+		return
+	}
+
+	idPlayer, err := strconv.Atoi(idPlayerStr)
+	if err != nil {
+		http.Error(w, "Invalid idPlayer", http.StatusBadRequest)
+		return
+	}
+	if !contains(gameStateInternal.playersAnswered, idPlayer) {
+		gameStateInternal.playersAnswered = append(gameStateInternal.playersAnswered, idPlayer)
+	}
+
+	checkAllPlayersAnswered()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Answer processed"))
+}
+
 func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool {
 	log.Printf("call checkAndProcessAnswer(%s, %d, %s)", idQuest, idPlayer, answerText)
 
 	result := false
 	unfreeze := len(gameStateInternal.requestAnswerReceived) == 0
+	done := len(gameStateInternal.playersAnswered) == numberOfRealPlayers()
 
 	gameState.broadcastMessage("validated", map[string]interface{}{
 		"idQuest":  idQuest,
@@ -1321,24 +1368,45 @@ func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool
 		processAnswerRequests();
 		return result
 	}
+
+	if (result) {
+		gameState.currentPlayerId = idPlayer
+	}
 	
 	// остались люди кто еще не попробовал ответить
-	if (!result && true) {
+	if (!result && !done) {
 		gameState.state = StateQuestion
 		return result
 	}
 
-	// переходим к вопросам
+	checkAllPlayersAnswered()
+
 	return result
 }
 
-func transitionToSelectQuestion(answeredPlayerId int) {
-	// Если был дан верный ответ, ответивший становится current player
-	// Если никто не ответил верно, current player не меняется
-	if answeredPlayerId > 0 {
-		gameState.currentPlayerId = answeredPlayerId
+func checkAllPlayersAnswered() {
+	log.Printf("call checkAllPlayersAnswered()")
+
+	log.Printf("playersAnswered) = %d, players = %d", len(gameStateInternal.playersAnswered), numberOfRealPlayers())
+	if (len(gameStateInternal.playersAnswered) != numberOfRealPlayers()) {
+		return
 	}
-	
+
+	log.Printf("showanswer")
+
+	gameState.broadcastMessage("showanswer", map[string]interface{}{
+		"idQuest": gameStateInternal.selectedQuestionId,
+	})
+
+	// переходим к вопросам
+	time.AfterFunc(7*time.Second, func() {
+		transitionToSelectQuestion()
+	})
+}
+
+func transitionToSelectQuestion() {
+	log.Printf("call transitionToSelectQuestion()")
+
 	gameState.state = StateSelectQuestion
 
 	return
@@ -1705,4 +1773,33 @@ func withCORS(h http.Handler) http.Handler {
 
         h.ServeHTTP(w, r)
     })
+}
+
+func numberOfAllPlayers() int {
+	count := 0
+	for id := range gameState.players {
+		if id < 1000 {
+			count++
+		}
+	}
+	return count
+}
+
+func numberOfRealPlayers() int {
+	count := 0
+	for id := range gameState.players {
+		if id < 100 {
+			count++
+		}
+	}
+	return count
+}
+
+func contains(xs []int, x int) bool {
+    for _, v := range xs {
+        if v == x {
+            return true
+        }
+    }
+    return false
 }

@@ -719,7 +719,7 @@
                     handleValidated(message.idQuest, message.idPlayer, message.result, message.unfreeze);
                     break;
                 case 'showanswer':
-                    handleShowAnswer(message.questId);
+                    handleShowAnswer(message.idQuest);
                     break;
                 case 'showmantalk':
                     showmanTalk(message.text);
@@ -901,43 +901,31 @@
                     await showVideoMedia(stage);
                 }
             }
+        }
 
-            /*const centerZone = document.getElementById('centerZone');
-            centerZone.classList.remove('hidden');
-            
-            // Находим вопрос в данных
-            const question = findQuestionById(questionId);
-            if (!question) {
-                centerZone.innerHTML = '<div class="loading">Вопрос не найден</div>';
-                return;
-            }
-            
-            // Получаем медиа для вопроса
-            const mediaItems = getQuestionMedia(question);
-            
-            if (mediaIndex < mediaItems.length) {
-                const media = mediaItems[mediaIndex];
-                displayMedia(media);
-                
-                // Если есть еще медиа, показываем следующее
-                if (mediaIndex + 1 < mediaItems.length) {
-                    setTimeout(() => {
-                        showQuestion(questionId, mediaIndex + 1);
-                    }, 2000); // 2 секунды между медиа
-                } else {
-                    // Все медиа показаны, отправляем questionbeenshown
-                    try {
-                        const formData = new URLSearchParams();
-                        formData.append('playerId', playerId);
-                        await fetch(`${getServerUrl()}/questionbeenshown`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                    } catch (error) {
-                        console.error('Ошибка questionbeenshown:', error);
-                    }
+        async function showAnswer(questionId) {
+            const parts = questionId.split('_')
+            const r = +parts[0]-1
+            const t = +parts[1]-1
+            const q = +parts[2]-1
+
+            const question = gameData.packageJson['rounds'][0]['round'][r]['themes'][0]['theme'][t]['questions'][0]['question'][q]
+            const content = question['right'][0]['answer']
+
+            for (let stage of content) {
+                if (!stage['@type']) {
+                    await showTextMedia(stage, content.length > 1);
                 }
-            }*/
+                if (stage['@type'] === "image") {
+                    await showImageMedia(stage);
+                }
+                if (stage['@type'] === "audio") {
+                    await showAudioMedia(stage);
+                }
+                if (stage['@type'] === "video") {
+                    await showVideoMedia(stage);
+                }
+            }
         }
 
         async function showTextMedia(data, short) {
@@ -1164,6 +1152,13 @@
             }
             if (gameData.questionTimer.remains <= 0) {
                 stopAnswerTimer()
+                
+                const formData = new URLSearchParams();
+                formData.append('id-player', playerId);
+                fetch(`${getServerUrl()}/timerdone`, {
+                    method: 'POST',
+                    body: formData
+                });
             }
             gameData.questionTimer.remains -= +new Date() - gameData.questionTimer.lastTimestamp;
             gameData.questionTimer.lastTimestamp = +new Date()
@@ -1275,7 +1270,8 @@
 
         // Обработка showanswer
         async function handleShowAnswer(questId) {
-            
+            showAnswer(questId)
+            stopAnswerTimer();
         }
 
         // Поиск ответа по ID вопроса

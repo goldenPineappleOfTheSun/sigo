@@ -309,8 +309,6 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	gameState.packageJson = packageJson
 
-	log.Printf("%s", getQuestionsTable(gameState.roundNum))
-
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Package uploaded successfully"))
 }
@@ -952,7 +950,7 @@ func transitionToSelectQuestionForced() {
 	gameState.state = StateSelectQuestion
 
 	log.Printf("before send table")
-	table := getQuestionsTable(gameState.roundNum - 1)
+	table := getQuestionsTable(gameState.roundNum - 1, true)
 	gameState.broadcastMessage("questionstable", map[string]interface{}{
 		"table": table,
 	})
@@ -1398,8 +1396,10 @@ func checkAllPlayersAnswered() {
 		"idQuest": gameStateInternal.selectedQuestionId,
 	})
 
+	gameState.answeredQuestions[gameStateInternal.selectedQuestionId] = true
+
 	// переходим к вопросам
-	time.AfterFunc(7*time.Second, func() {
+	time.AfterFunc(5 * time.Second, func() {
 		transitionToSelectQuestion()
 	})
 }
@@ -1408,6 +1408,13 @@ func transitionToSelectQuestion() {
 	log.Printf("call transitionToSelectQuestion()")
 
 	gameState.state = StateSelectQuestion
+
+	log.Printf("before send table")
+	table := getQuestionsTable(gameState.roundNum - 1, true)
+	gameState.broadcastMessage("questionstable", map[string]interface{}{
+		"table": table,
+	})
+	log.Printf("ws table")
 
 	return
 
@@ -1455,8 +1462,10 @@ func handleNPCTurn() {
 
 // Функции для работы с вопросами
 
-func getQuestionsTable(roundNum int) string {
+func getQuestionsTable(roundNum int, filterAnswered bool) string {
 	var result []string
+
+	log.Printf("answered: %+v", gameState.answeredQuestions)
 
 	themesCount := getThemesCountForRound(roundNum)
 	for i := 0; i < themesCount; i++ {
@@ -1464,7 +1473,12 @@ func getQuestionsTable(roundNum int) string {
 		questionsCount := getQuestionsCount(roundNum, i)
 		for j := 0; j < 10; j++ {
 			if (i < questionsCount) {
-				result = append(result, getQuestionPrice(roundNum, i, j))
+				questId, _ := getQuestionStringId(roundNum+1, i+1, j+1)
+				if (filterAnswered && gameState.answeredQuestions[questId]) {
+					result = append(result, "-")
+				} else {
+					result = append(result, getQuestionPrice(roundNum, i, j))
+				}
 			} else {
 				result = append(result, "")
 			}

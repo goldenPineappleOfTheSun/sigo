@@ -753,6 +753,12 @@
                 if (part === "") {
                     continue;
                 }
+
+                // already answered question
+                if (part === "-") {
+                    current.push(part);
+                    continue;
+                }
                 
                 // A new theme starts whenever the current row already has content
                 // and this part is NOT a question (i.e., first item after completing row)
@@ -777,10 +783,17 @@
             let html = "<table border='1' class='question-table'>\n";
             rows.forEach((row, row_i) => {
                 html += "  <tr>" + row.map((cell, i) => {
-                    let onclick = `selectQuestion(${roundNum}, ${row_i+1}, ${i+1})`
+                    let r = roundNum;
+                    let t = row_i+1;
+                    let q = i;
+                    let onclick = `selectQuestion(${r}, ${t}, ${q})`
                     let baseClass = i ? 'question-cell' : 'theme-cell';
-                    let stringId = i ? 'question-cell-' + getQuestionId(roundNum, row_i+1, i+1) : '';
-                    return `<td class='${baseClass} ${stringId}' onclick="${onclick}">${cell}</td>`
+                    let stringId = i ? 'question-cell-' + getQuestionId(r, t, q) : '';
+                    if (cell === "-") {
+                        return `<td class='${baseClass} answered'></td>`
+                    } else {
+                        return `<td class='${baseClass} ${stringId}' onclick="${onclick}">${cell}</td>`
+                    }
                 }).join("") + "</tr>\n";
             });
             html += "</table>";

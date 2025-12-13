@@ -1339,7 +1339,9 @@ func handleTimerDone(w http.ResponseWriter, r *http.Request) {
 		gameStateInternal.playersAnswered = append(gameStateInternal.playersAnswered, idPlayer)
 	}
 
-	checkAllPlayersAnswered()
+	if (isAllPlayersAnswered()) {
+		showAnswer()
+	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Answer processed"))
@@ -1362,9 +1364,12 @@ func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool
 	// ответ верный
 	if (result) {
 		gameState.currentPlayerId = idPlayer
-		checkAllPlayersAnswered()
+		gameState.players[idPlayer].Score += getScore(gameStateInternal.selectedQuestionId);
+		showAnswer()
 		return result
 	}
+	
+	gameState.players[idPlayer].Score -= getScore(gameStateInternal.selectedQuestionId);
 
 	// остались люди, кто нажал на кнопку
 	if (!queueIsEmpty) {
@@ -1380,20 +1385,18 @@ func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool
 		return result
 	}
 
-	checkAllPlayersAnswered()
+	showAnswer()
 
 	return result
 }
 
-func checkAllPlayersAnswered() {
-	log.Printf("call checkAllPlayersAnswered()")
-
+func isAllPlayersAnswered() bool {
 	log.Printf("playersAnswered) = %d, players = %d", len(gameStateInternal.playersAnswered), numberOfRealPlayers())
-	if (len(gameStateInternal.playersAnswered) != numberOfRealPlayers()) {
-		return
-	}
+	return len(gameStateInternal.playersAnswered) == numberOfRealPlayers()
+}
 
-	log.Printf("showanswer")
+func showAnswer() {
+	log.Printf("call showAnswer()")
 
 	gameState.broadcastMessage("showanswer", map[string]interface{}{
 		"idQuest": gameStateInternal.selectedQuestionId,
@@ -1461,6 +1464,18 @@ func transitionToSelectQuestion() {
 
 func handleNPCTurn() {
 	
+}
+
+func getScore(questionId string) int {
+	var a, b, c int
+	_, err := fmt.Sscanf(questionId, "%d_%d_%d", &a, &b, &c)
+	priceStr := getQuestionPrice(a-1, b-1, c-1)
+	price, err := strconv.Atoi(priceStr)
+	if ( err != nil) {
+		return 0;
+	}
+	log.Printf("question questionId gives: %d", price)
+	return price
 }
 
 // Функции для работы с вопросами

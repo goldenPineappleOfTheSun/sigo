@@ -435,7 +435,7 @@
         </div>
 
         <!-- Правая зона - лог -->
-        <div class="log-zone" id="logZone"></div>
+        <div class="log-zone" id="logZone">Доска профессионализма:<br></div>
     </div>
 
     <!-- Кнопка ответить -->
@@ -945,7 +945,7 @@
             let text = data['#text'];
             let label = $('<div>').text(text).addClass('media-text media-content')
             $('#centerZone').html('').append(label)
-            return new Promise(resolve => setTimeout(resolve, short ? 3000 : 3000 + text.length * 10))
+            return new Promise(resolve => setTimeout(resolve, short ? 3000 : 3000 + text.length * 15))
         }
 
         async function showImageMedia(data) {

@@ -1348,31 +1348,34 @@ func handleTimerDone(w http.ResponseWriter, r *http.Request) {
 func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool {
 	log.Printf("call checkAndProcessAnswer(%s, %d, %s)", idQuest, idPlayer, answerText)
 
-	result := false
-	unfreeze := len(gameStateInternal.requestAnswerReceived) == 0
+	result := answerText == "t";
+	queueIsEmpty := len(gameStateInternal.requestAnswerReceived) == 0
 	done := len(gameStateInternal.playersAnswered) == numberOfRealPlayers()
 
 	gameState.broadcastMessage("validated", map[string]interface{}{
 		"idQuest":  idQuest,
 		"idPlayer": idPlayer,
 		"result":   result,
-		"unfreeze": unfreeze,
+		"unfreeze": queueIsEmpty,
 	})
 
-	// остались люди, кто нажал на кнопку
-	if (!result && !unfreeze) {
-		log.Printf("ball to other player")
-		gameState.state = StateQuestion
-		processAnswerRequests();
+	// ответ верный
+	if (result) {
+		gameState.currentPlayerId = idPlayer
+		checkAllPlayersAnswered()
 		return result
 	}
 
-	if (result) {
-		gameState.currentPlayerId = idPlayer
+	// остались люди, кто нажал на кнопку
+	if (!queueIsEmpty) {
+		log.Printf("ball to other player")
+		gameState.state = StateQuestion
+		processAnswerRequests()
+		return result
 	}
 	
 	// остались люди кто еще не попробовал ответить
-	if (!result && !done) {
+	if (!done) {
 		gameState.state = StateQuestion
 		return result
 	}

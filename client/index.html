@@ -340,15 +340,44 @@
             background: linear-gradient(90deg, #FF9800, #FFC107);
         }
 
-        .player-bubble {
-            background: rgba(255, 255, 255, 0.9);
+        .player-bubble {    
+            --duration: 5s;
+            
+            position: absolute;
+            display: none;
+            bottom: 100%;
+            transform: translateY(40px);
+            text-align: center;
+            background: rgba(255, 255, 255, 0.7);
             color: #333;
             padding: 5px 10px;
             border-radius: 10px;
             font-size: 12px;
             min-height: 30px;
-            width: 100%;
-            word-wrap: break-word;
+            width: 80%;
+            word-wrap: break-word;            
+            animation: player-bubble-float var(--duration) linear forwards;
+        }
+
+        .player-bubble.fly {  
+            opacity: 1;
+            display: block;
+            animation: player-bubble-float var(--duration) linear forwards; 
+        } 
+
+        @keyframes player-bubble-float {
+            0% {
+                transform: translateY(50px);
+                opacity: 1;
+            }
+            50% {
+                transform: translateY(0px);
+                opacity: 0.9;
+            }
+            100% {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
         }
 
         .player-answer-window {
@@ -734,13 +763,13 @@
                     handleStopTimer();
                     break;
                 case 'validated':
-                    handleValidated(message.idQuest, message.idPlayer, message.result, message.unfreeze);
+                    handleValidated(message.idQuest, message.playerId, message.result, message.unfreeze);
                     break;
                 case 'showanswer':
                     handleShowAnswer(message.idQuest);
                     break;
-                case 'showmantalk':
-                    showmanTalk(message.text);
+                case 'hosttalk':
+                    hostTalk(message.text);
                     break;
                 case 'playertalk':
                     playerTalk(message.playerId, message.text);
@@ -962,10 +991,10 @@
         async function showTextMedia(data, short, karaoke) {
             let text = data['#text'];
             let label = $('<div>').text(text).addClass('media-text media-content')
-            let time = short ? 3000 : 3000 + text.length * 15;
+            let time = Math.round((short ? 3000 : 3000 + text.length * 25) / 1000) * 1000;
             $('#centerZone').html('').append(label)
             if (karaoke) {
-                $(label).css('--duration', Math.floor(time / 1000) + 's');
+                $(label).css('--duration', Math.round(time / 1000) + 's');
                 $(label).addClass('karaoke');
             }
             return new Promise(resolve => setTimeout(() => {
@@ -1325,17 +1354,20 @@
         }
 
         // Реплика ведущего
-        function showmanTalk(text) {
+        function hostTalk(text) {
             document.getElementById('hostBubble').textContent = text;
             addLog(`Ведущий: ${text}`);
         }
 
         // Реплика игрока
         function playerTalk(playerId, text) {
-            const bubble = document.getElementById(`bubble-${playerId}`);
+            const bubble = $(`#bubble-${playerId}`);
             if (bubble) {
-                bubble.textContent = text;
+                $(bubble).text(text);
+                $(bubble).addClass('fly');
+                setTimeout(() => $(bubble).removeClass('fly'), 5000)
             }
+
             addLog(`Игрок ${playerId}: ${text}`);
         }
 

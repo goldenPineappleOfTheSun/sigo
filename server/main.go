@@ -1356,9 +1356,14 @@ func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool
 
 	gameState.broadcastMessage("validated", map[string]interface{}{
 		"idQuest":  idQuest,
-		"idPlayer": idPlayer,
+		"playerId": idPlayer,
 		"result":   result,
 		"unfreeze": queueIsEmpty,
+	})
+
+	gameState.broadcastMessage("playertalk", map[string]interface{}{
+		"playerId": idPlayer,
+		"text":   answerText,
 	})
 
 	// ответ верный

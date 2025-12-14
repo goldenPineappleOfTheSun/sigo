@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Выбор персонажа</title>
+    <title>Настройка игры</title>
     <style>
         * {
             margin: 0;
@@ -26,15 +26,40 @@
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             padding: 40px;
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
         }
 
         h1 {
             color: #333;
-            margin-bottom: 30px;
+            margin-bottom: 10px;
             text-align: center;
             font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-section {
+            margin-bottom: 40px;
+            padding-bottom: 30px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .form-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .form-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 20px;
         }
 
         .form-group {
@@ -148,29 +173,146 @@
             box-shadow: 0 0 0 3px rgba(90, 141, 238, 0.3);
         }
 
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .continue-btn {
+            margin-top: 0;
+        }
+
+        #startSection {
+            margin-top: 0;
+            padding-top: 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Выбрать ведущего</h1>
+        <h1>Настройка игры</h1>
+        <p class="subtitle">Загрузите пакет вопросов и выберите ведущего</p>
 
-        <form id="npcForm">
-            <div class="form-group">
-                <label for="character">Выберите персонажа:</label>
-                <select class="selectbox" id="character" name="character" required>
-                    <option value="">Загрузка...</option>
-                </select>
-                <div class="error" id="characterError"></div>
-            </div>
+        <!-- Форма загрузки пакета -->
+        <div class="form-section">
+            <h2>1. Загрузить SIQ файл</h2>
+            <div class="status" id="packageStatus"></div>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="siq">Файл .siq:</label>
+                    <input type="file" id="siq" name="siq" accept=".siq" required>
+                    <div class="error" id="fileError"></div>
+                </div>
+                <button type="submit" id="packageSubmitBtn">Загрузить</button>
+            </form>
+        </div>
 
-            <button type="submit" id="submitBtn">Присоединиться</button>
-        </form>
+        <!-- Форма выбора ведущего -->
+        <div class="form-section">
+            <h2>2. Выбрать ведущего</h2>
+            <div class="status" id="hostStatus"></div>
+            <form id="npcForm">
+                <div class="form-group">
+                    <label for="character">Выберите персонажа:</label>
+                    <select class="selectbox" id="character" name="character" required>
+                        <option value="">Загрузка...</option>
+                    </select>
+                    <div class="error" id="characterError"></div>
+                </div>
+                <button type="submit" id="hostSubmitBtn">Присоединиться</button>
+            </form>
+        </div>
+
+        <!-- Кнопка продолжения -->
+        <div class="form-section" id="startSection" style="display: none;">
+            <h2>3. Начать игру</h2>
+            <div class="status" id="playersStatus"></div>
+            <div class="status" id="startStatus"></div>
+            <button type="button" id="continueBtn" class="continue-btn" disabled>Начать игру</button>
+        </div>
     </div>
 
     <script>
+        // Состояние выполнения
+        let packageUploaded = false;
+        let hostSelected = false;
+        let playersCheckInterval = null;
+
+        // Элементы для загрузки пакета
+        const uploadForm = document.getElementById('uploadForm');
+        const packageSubmitBtn = document.getElementById('packageSubmitBtn');
+        const fileError = document.getElementById('fileError');
+        const packageStatus = document.getElementById('packageStatus');
+
+        // Элементы для выбора ведущего
         const selectEl = document.getElementById("character");
-        const submitBtn = document.getElementById("submitBtn");
+        const hostSubmitBtn = document.getElementById("hostSubmitBtn");
         const errorBox = document.getElementById("characterError");
+        const npcForm = document.getElementById("npcForm");
+        const hostStatus = document.getElementById("hostStatus");
+        const continueBtn = document.getElementById("continueBtn");
+        const playersStatus = document.getElementById("playersStatus");
+
+        // Функция проверки количества игроков (исключая хост с ID 1000)
+        async function checkPlayers() {
+            try {
+                const response = await fetch('http://localhost:8080/data');
+                const data = await response.json();
+                const regularPlayers = data.players.filter(p => p.id < 1000);
+                
+                if (regularPlayers.length > 0) {
+                    playersStatus.textContent = `Игроков присоединилось: ${regularPlayers.length}`;
+                    playersStatus.classList.remove('error');
+                    playersStatus.classList.add('show', 'success');
+                    continueBtn.disabled = false;
+                    return true;
+                } else {
+                    playersStatus.textContent = 'Ожидание игроков... (нужен хотя бы 1 игрок)';
+                    playersStatus.classList.remove('success');
+                    playersStatus.classList.add('show', 'error');
+                    continueBtn.disabled = true;
+                    return false;
+                }
+            } catch (err) {
+                playersStatus.textContent = 'Ошибка проверки игроков';
+                playersStatus.classList.remove('success');
+                playersStatus.classList.add('show', 'error');
+                continueBtn.disabled = true;
+                return false;
+            }
+        }
+
+        // Функция проверки готовности
+        function checkReady() {
+            if (packageUploaded && hostSelected) {
+                document.getElementById('startSection').style.display = 'block';
+                // Проверяем игроков сразу и затем периодически
+                checkPlayers();
+                if (playersCheckInterval) {
+                    clearInterval(playersCheckInterval);
+                }
+                playersCheckInterval = setInterval(checkPlayers, 2000); // Проверяем каждые 2 секунды
+            }
+        }
 
         // Загружаем список персонажей
         async function loadCharacters() {
@@ -194,13 +336,75 @@
 
         loadCharacters();
 
-        // Отправка формы
-        document.getElementById("npcForm").addEventListener("submit", async function(e) {
+        // Обработка загрузки пакета
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            fileError.textContent = '';
+            packageStatus.classList.remove('show', 'success', 'error');
+            packageSubmitBtn.disabled = true;
+            packageSubmitBtn.textContent = 'Отправка...';
+
+            const formData = new FormData();
+            const siqFile = document.getElementById('siq').files[0];
+
+            if (siqFile) {
+                formData.append('file', siqFile);
+            }
+
+            try {
+                const response = await fetch('http://localhost:8080/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Проверяем, что сервер в состоянии joining
+                    try {
+                        const stateResponse = await fetch('http://localhost:8080/state');
+                        const state = await stateResponse.text();
+                        if (state !== 'joining') {
+                            packageStatus.textContent = 'Предупреждение: сервер не в состоянии joining (текущее: ' + state + ')';
+                            packageStatus.classList.add('show', 'error');
+                        } else {
+                            packageUploaded = true;
+                            packageStatus.textContent = 'Файл успешно загружен! Сервер в состоянии joining.';
+                            packageStatus.classList.add('show', 'success');
+                            document.getElementById('siq').disabled = true;
+                            checkReady();
+                        }
+                    } catch (stateErr) {
+                        // Если не удалось проверить состояние, продолжаем
+                        packageUploaded = true;
+                        packageStatus.textContent = 'Файл успешно загружен!';
+                        packageStatus.classList.add('show', 'success');
+                        document.getElementById('siq').disabled = true;
+                        checkReady();
+                    }
+                } else {
+                    const errorText = await response.text();
+                    fileError.textContent = 'Ошибка: ' + errorText;
+                    packageStatus.textContent = 'Ошибка загрузки файла';
+                    packageStatus.classList.add('show', 'error');
+                }
+            } catch (err) {
+                fileError.textContent = 'Ошибка подключения.';
+                packageStatus.textContent = 'Ошибка подключения к серверу';
+                packageStatus.classList.add('show', 'error');
+            }
+
+            packageSubmitBtn.disabled = false;
+            packageSubmitBtn.textContent = 'Загрузить';
+        });
+
+        // Обработка выбора ведущего
+        npcForm.addEventListener("submit", async function(e) {
             e.preventDefault();
 
             errorBox.textContent = "";
-            submitBtn.disabled = true;
-            submitBtn.textContent = "Отправка...";
+            hostStatus.classList.remove('show', 'success', 'error');
+            hostSubmitBtn.disabled = true;
+            hostSubmitBtn.textContent = "Отправка...";
 
             const formData = new FormData();
             formData.append("character", selectEl.value);
@@ -212,17 +416,75 @@
                 });
 
                 if (response.ok) {
-                    window.location.href = "index.html";
+                    hostSelected = true;
+                    hostStatus.textContent = 'Ведущий успешно выбран!';
+                    hostStatus.classList.add('show', 'success');
+                    selectEl.disabled = true;
+                    checkReady();
                 } else {
                     const txt = await response.text();
                     errorBox.textContent = "Ошибка: " + txt;
+                    hostStatus.textContent = 'Ошибка выбора ведущего';
+                    hostStatus.classList.add('show', 'error');
                 }
             } catch (err) {
                 errorBox.textContent = "Ошибка подключения к серверу";
+                hostStatus.textContent = 'Ошибка подключения к серверу';
+                hostStatus.classList.add('show', 'error');
             }
 
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Присоединиться";
+            hostSubmitBtn.disabled = false;
+            hostSubmitBtn.textContent = "Присоединиться";
+        });
+
+        // Кнопка продолжения
+        const startStatus = document.getElementById('startStatus');
+        continueBtn.addEventListener('click', async function() {
+            // Проверяем игроков перед запуском
+            const hasPlayers = await checkPlayers();
+            if (!hasPlayers) {
+                startStatus.textContent = 'Нельзя начать игру без игроков!';
+                startStatus.classList.add('show', 'error');
+                return;
+            }
+
+            startStatus.classList.remove('show', 'success', 'error');
+            continueBtn.disabled = true;
+            continueBtn.textContent = 'Запуск игры...';
+
+            // Останавливаем проверку игроков
+            if (playersCheckInterval) {
+                clearInterval(playersCheckInterval);
+                playersCheckInterval = null;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8080/start', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    startStatus.textContent = 'Игра успешно запущена!';
+                    startStatus.classList.add('show', 'success');
+                    continueBtn.textContent = 'Игра запущена';
+                    continueBtn.disabled = true;
+                } else {
+                    const errorText = await response.text();
+                    startStatus.textContent = 'Ошибка: ' + errorText;
+                    startStatus.classList.add('show', 'error');
+                    continueBtn.disabled = false;
+                    continueBtn.textContent = 'Начать игру';
+                    // Возобновляем проверку игроков
+                    playersCheckInterval = setInterval(checkPlayers, 2000);
+                }
+            } catch (err) {
+                startStatus.textContent = 'Ошибка подключения к серверу';
+                startStatus.classList.add('show', 'error');
+                continueBtn.disabled = false;
+                continueBtn.textContent = 'Начать игру';
+                // Возобновляем проверку игроков
+                playersCheckInterval = setInterval(checkPlayers, 2000);
+            }
         });
     </script>
 </body>

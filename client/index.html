@@ -161,6 +161,24 @@
             max-width: 80%;
         }
 
+        .media-text.karaoke {
+            --duration: 3s;
+            background: linear-gradient(90deg, #ffffff11 0%, #ffffff11 100%) 0 0 / 100% 0% no-repeat;
+            animation: karaoke var(--duration) linear forwards;
+        }
+
+        @keyframes karaoke {
+            0% {
+                background-size: 100% 0%;
+            }
+            99.9% {
+                background-size: 100% 100%;
+            }
+            100% {
+                background-size: 100% 0%;
+            }
+        }
+
         .media-image {
             width: auto;
             height: auto;
@@ -902,7 +920,7 @@
 
             for (let stage of content) {
                 if (!stage['@type']) {
-                    await showTextMedia(stage, content.length > 1);
+                    await showTextMedia(stage, content.length > 1, true);
                 }
                 if (stage['@type'] === "image") {
                     await showImageMedia(stage);
@@ -927,7 +945,7 @@
 
             for (let stage of content) {
                 if (!stage['@type']) {
-                    await showTextMedia(stage, content.length > 1);
+                    await showTextMedia(stage, content.length > 1, false);
                 }
                 if (stage['@type'] === "image") {
                     await showImageMedia(stage);
@@ -941,11 +959,20 @@
             }
         }
 
-        async function showTextMedia(data, short) {
+        async function showTextMedia(data, short, karaoke) {
             let text = data['#text'];
             let label = $('<div>').text(text).addClass('media-text media-content')
+            let time = short ? 3000 : 3000 + text.length * 15;
             $('#centerZone').html('').append(label)
-            return new Promise(resolve => setTimeout(resolve, short ? 3000 : 3000 + text.length * 15))
+            if (karaoke) {
+                $(label).css('--duration', Math.floor(time / 1000) + 's');
+                $(label).addClass('karaoke');
+            }
+            return new Promise(resolve => setTimeout(() => {
+                $(label).removeClass('karaoke');
+                resolve()
+
+            }, time))
         }
 
         async function showImageMedia(data) {

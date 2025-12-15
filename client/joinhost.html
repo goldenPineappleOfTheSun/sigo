@@ -205,6 +205,15 @@
             margin-top: 0;
             padding-top: 0;
         }
+
+        .reset-btn {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            margin-top: 20px;
+        }
+
+        .reset-btn:hover {
+            box-shadow: 0 10px 20px rgba(231, 76, 60, 0.4);
+        }
     </style>
 </head>
 <body>
@@ -249,6 +258,12 @@
             <div class="status" id="startStatus"></div>
             <button type="button" id="continueBtn" class="continue-btn" disabled>Начать игру</button>
         </div>
+
+        <!-- Кнопка сброса -->
+        <div class="form-section">
+            <button type="button" id="resetBtn" class="reset-btn">Сбросить игру</button>
+            <div class="status" id="resetStatus"></div>
+        </div>
     </div>
 
     <script>
@@ -271,6 +286,8 @@
         const hostStatus = document.getElementById("hostStatus");
         const continueBtn = document.getElementById("continueBtn");
         const playersStatus = document.getElementById("playersStatus");
+        const resetBtn = document.getElementById("resetBtn");
+        const resetStatus = document.getElementById("resetStatus");
 
         // Функция проверки количества игроков (исключая хост с ID 1000)
         async function checkPlayers() {
@@ -485,6 +502,79 @@
                 // Возобновляем проверку игроков
                 playersCheckInterval = setInterval(checkPlayers, 2000);
             }
+        });
+
+        // Функция сброса игры
+        function resetGame() {
+            // Сбрасываем локальное состояние
+            packageUploaded = false;
+            hostSelected = false;
+            
+            // Останавливаем проверку игроков
+            if (playersCheckInterval) {
+                clearInterval(playersCheckInterval);
+                playersCheckInterval = null;
+            }
+            
+            // Сбрасываем UI
+            document.getElementById('startSection').style.display = 'none';
+            document.getElementById('siq').disabled = false;
+            document.getElementById('siq').value = '';
+            selectEl.disabled = false;
+            selectEl.value = '';
+            
+            // Очищаем статусы
+            packageStatus.classList.remove('show', 'success', 'error');
+            packageStatus.textContent = '';
+            hostStatus.classList.remove('show', 'success', 'error');
+            hostStatus.textContent = '';
+            playersStatus.classList.remove('show', 'success', 'error');
+            playersStatus.textContent = '';
+            startStatus.classList.remove('show', 'success', 'error');
+            startStatus.textContent = '';
+            resetStatus.classList.remove('show', 'success', 'error');
+            resetStatus.textContent = '';
+            
+            // Сбрасываем кнопки
+            continueBtn.disabled = true;
+            continueBtn.textContent = 'Начать игру';
+            packageSubmitBtn.disabled = false;
+            packageSubmitBtn.textContent = 'Загрузить';
+            hostSubmitBtn.disabled = false;
+            hostSubmitBtn.textContent = 'Присоединиться';
+        }
+
+        // Обработка кнопки сброса
+        resetBtn.addEventListener('click', async function() {
+            if (!confirm('Вы уверены, что хотите сбросить игру? Все данные будут удалены.')) {
+                return;
+            }
+
+            resetStatus.classList.remove('show', 'success', 'error');
+            resetBtn.disabled = true;
+            resetBtn.textContent = 'Сброс...';
+
+            try {
+                const response = await fetch('http://localhost:8080/reset', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    resetGame();
+                    resetStatus.textContent = 'Игра успешно сброшена!';
+                    resetStatus.classList.add('show', 'success');
+                } else {
+                    const errorText = await response.text();
+                    resetStatus.textContent = 'Ошибка: ' + errorText;
+                    resetStatus.classList.add('show', 'error');
+                }
+            } catch (err) {
+                resetStatus.textContent = 'Ошибка подключения к серверу';
+                resetStatus.classList.add('show', 'error');
+            }
+
+            resetBtn.disabled = false;
+            resetBtn.textContent = 'Сбросить игру';
         });
     </script>
 </body>

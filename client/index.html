@@ -22,7 +22,7 @@
 
         .container {
             display: grid;
-            grid-template-columns: 200px 1fr 300px;
+            grid-template-columns: 300px 1fr 0;
             grid-template-rows: 1fr auto;
             height: 70vh;
             gap: 10px;
@@ -63,6 +63,7 @@
             min-height: 50px;
             width: 100%;
             font-size: 14px;
+            text-align: center;
             word-wrap: break-word;
         }
 
@@ -227,6 +228,7 @@
 
         /* Правая зона - лог */
         .log-zone {
+            display: none;
             background: rgba(0, 0, 0, 0.3);
             border-radius: 10px;
             padding: 15px;
@@ -472,7 +474,7 @@
         <!-- Левая зона - ведущий -->
         <div class="host-zone">
             <img src="" alt="Ведущий" class="host-photo" id="hostPhoto">
-            <div class="host-name" id="hostName">Ведущий</div>
+            <div class="host-name" id="hostName">Дональд Трамп</div>
             <div class="host-bubble" id="hostBubble"></div>
         </div>
 
@@ -560,6 +562,13 @@
             gameData.packageJson = data.packageJson;
             gameData.players = data.players;
             gameData.questionsCache = null; // Сброс кэша при новой загрузке
+            
+            // Update host name from player data (host has ID 1000)
+            const hostPlayer = gameData.players.find(p => p.id === 1000);
+            if (hostPlayer) {
+                document.getElementById('hostName').textContent = hostPlayer.name;
+            }
+            
             updatePlayers();
         }
 
@@ -991,7 +1000,7 @@
         async function showTextMedia(data, short, karaoke) {
             let text = data['#text'];
             let label = $('<div>').text(text).addClass('media-text media-content')
-            let time = Math.round((short ? 3000 : 3000 + text.length * 25) / 1000) * 1000;
+            let time = Math.round((short ? 3000 : 3000 + text.length * 40) / 1000) * 1000 + 1000;
             $('#centerZone').html('').append(label)
             if (karaoke) {
                 $(label).css('--duration', Math.round(time / 1000) + 's');
@@ -1405,6 +1414,9 @@
         // Обработка кнопки ответить
         document.getElementById('answerButton').addEventListener('click', answerButtonClicked);
         document.addEventListener('keydown', (e) => {
+            if ($('#answerButton')[0].disabled) {
+                return true;
+            }
             if (e.code === 'Space') {
                 e.preventDefault();
                 answerButtonClicked();

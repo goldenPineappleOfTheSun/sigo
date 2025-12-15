@@ -16,8 +16,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/goldenpineappleofthesun/siziph"
 	"github.com/tidwall/gjson"
+	"github.com/goldenpineappleofthesun/siziph"
+	"github.com/goldenpineappleofthesun/siclo"
 )
 
 const (
@@ -57,7 +58,7 @@ type Player struct {
 type NPCCharacter struct {
 	Name         string `json:"name"`
 	Photo        string `json:"photo"`
-	ShowmanPrompt string `json:"showman_prompt"`
+	HostPrompt   string `json:"host_prompt"`
 	PlayerPrompt string `json:"player_prompt"`
 }
 
@@ -135,6 +136,7 @@ func main() {
 	http.Handle("/requestanswer",    withCORS(http.HandlerFunc(handleRequestAnswer)))
 	http.Handle("/answer",           withCORS(http.HandlerFunc(handleAnswer)))
 	http.Handle("/timerdone",        withCORS(http.HandlerFunc(handleTimerDone)))
+	http.Handle("/reset",            withCORS(http.HandlerFunc(handleReset)))
 	http.Handle("/ws",               withCORS(http.HandlerFunc(handleWebSocket)))
 
 	log.Println("Server starting on :8080")
@@ -829,6 +831,71 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Game started"))
 }
 
+func handleReset(w http.ResponseWriter, r *http.Request) {
+	log.Printf("call handleReset()")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	gameState.mu.Lock()
+	defer gameState.mu.Unlock()
+
+	// Очищаем папку package
+	os.RemoveAll("package")
+	os.MkdirAll("package", 0755)
+
+	// Очищаем папку players
+	os.RemoveAll("players")
+	os.MkdirAll("players", 0755)
+
+	// Очищаем состояние игры
+	gameState.players = make(map[int]*Player)
+	gameState.nextNPCId = 100
+	gameState.answeredQuestions = make(map[string]bool)
+	gameState.state = StateJoining
+	gameState.currentPlayerId = 0
+	gameState.roundNum = 0
+	gameState.packageJson = nil
+
+	// Очищаем внутреннее состояние
+	gameStateInternal.acknowledgesReceived = make(map[int]bool)
+	gameStateInternal.questionShownReceived = make(map[int]bool)
+	gameStateInternal.requestAnswerReceived = make([]PlayerAnswerRequest, 0)
+	gameStateInternal.playersAnswered = make([]int, 0)
+	gameStateInternal.startAcknowledgeReceived = make(map[int]bool)
+	gameStateInternal.selectedQuestionId = ""
+	gameStateInternal.canAnswerTimestamp = 0
+
+	// Останавливаем все таймеры
+	if gameStateInternal.waitAnswerTimeout != nil {
+		gameStateInternal.waitAnswerTimeout.Stop()
+		gameStateInternal.waitAnswerTimeout = nil
+	}
+	if gameStateInternal.acknowledgeTimeout != nil {
+		gameStateInternal.acknowledgeTimeout.Stop()
+		gameStateInternal.acknowledgeTimeout = nil
+	}
+	if gameStateInternal.questionShownTimeout != nil {
+		gameStateInternal.questionShownTimeout.Stop()
+		gameStateInternal.questionShownTimeout = nil
+	}
+	if gameStateInternal.showAnswerTimeout != nil {
+		gameStateInternal.showAnswerTimeout.Stop()
+		gameStateInternal.showAnswerTimeout = nil
+	}
+	if gameStateInternal.startAcknowledgeTimeout != nil {
+		gameStateInternal.startAcknowledgeTimeout.Stop()
+		gameStateInternal.startAcknowledgeTimeout = nil
+	}
+
+	// Отправляем сообщение о сбросе через WebSocket
+	gameState.broadcastMessage("reset", map[string]interface{}{})
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Game reset successfully"))
+}
+
 func getQuestionStringId(round int, theme int, question int) (string, error) {
 	result := fmt.Sprintf("%d_%d_%d", round, theme, question)
 	return result, nil
@@ -950,7 +1017,7 @@ func transitionToSelectQuestionForced() {
 	gameState.state = StateSelectQuestion
 
 	log.Printf("before send table")
-	table := getQuestionsTable(gameState.roundNum - 1, true)
+	table, _, _ := getQuestionsTable(gameState.roundNum - 1, true)
 	gameState.broadcastMessage("questionstable", map[string]interface{}{
 		"table": table,
 	})
@@ -1350,7 +1417,29 @@ func handleTimerDone(w http.ResponseWriter, r *http.Request) {
 func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool {
 	log.Printf("call checkAndProcessAnswer(%s, %d, %s)", idQuest, idPlayer, answerText)
 
-	result := answerText == "t";
+	question := getQuestion(idQuest)
+	expectedAnswer := getAnswer(idQuest)
+	
+	// Get host player (ID 1000) and their character
+	hostPlayer, exists := gameState.players[1000]
+	hostName := "Ведущий" // Default fallback
+	hostDescription := "(описание ведущего)"
+
+	if exists && hostPlayer.NPCCharacter != nil {
+		hostName = hostPlayer.NPCCharacter.Name
+		hostDescription = hostPlayer.NPCCharacter.HostPrompt
+	}
+	
+	claudeAnswer, _ := siclo.ValidateAnswer(hostName, "Отвечай коротко. " + hostDescription, 
+		question, answerText, expectedAnswer);
+	log.Printf("send to claude (%s, %s, %s, %s, %s)", hostName, "Отвечай коротко. " + hostDescription, 
+		question, answerText, expectedAnswer)
+	result := claudeAnswer.Result;
+	hostSpeak := claudeAnswer.Justification;
+
+	log.Printf("claudeAnswer is %b", result)
+	log.Printf("claudeAnswer is %s", hostSpeak)
+
 	queueIsEmpty := len(gameStateInternal.requestAnswerReceived) == 0
 	done := len(gameStateInternal.playersAnswered) == numberOfRealPlayers()
 
@@ -1364,6 +1453,10 @@ func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool
 	gameState.broadcastMessage("playertalk", map[string]interface{}{
 		"playerId": idPlayer,
 		"text":   answerText,
+	})
+
+	gameState.broadcastMessage("hosttalk", map[string]interface{}{
+		"text":   hostSpeak,
 	})
 
 	// ответ верный
@@ -1421,32 +1514,10 @@ func transitionToSelectQuestion() {
 	gameState.state = StateSelectQuestion
 
 	log.Printf("before send table")
-	table := getQuestionsTable(gameState.roundNum - 1, true)
-	gameState.broadcastMessage("questionstable", map[string]interface{}{
-		"table": table,
-	})
-	log.Printf("ws table")
+	table, isempty, _  := getQuestionsTable(gameState.roundNum - 1, true)
 
-	return
-
-	// TODO Проверяем закончились ли вопросы раунда
-	/*allAnswered := true
-	themes := getThemesForRound(gameState.roundNum)
-	for _, theme := range themes {
-		questions := getQuestionsForTheme(theme)
-		for _, q := range questions {
-			if !gameState.answeredQuestions[q.ID] {
-				allAnswered = false
-				break
-			}
-		}
-		if !allAnswered {
-			break
-		}
-	}
-
-	// Если все вопросы раунда отвечены, проверяем есть ли следующий раунд
-	if allAnswered {
+	if (isempty) {
+		log.Printf("next round")
 		if isThereNextRound(gameState.roundNum) {
 			gameState.roundNum++
 		} else {
@@ -1454,17 +1525,14 @@ func transitionToSelectQuestion() {
 			return
 		}
 	}
+	table, isempty, _  = getQuestionsTable(gameState.roundNum - 1, true)
 
-	// Отправляем таблицу вопросов
-	table := getQuestionsTable(gameState.roundNum)
 	gameState.broadcastMessage("questionstable", map[string]interface{}{
 		"table": table,
 	})
+	log.Printf("ws table")
 
-	// Если текущий игрок - NPC, обрабатываем его ход
-	if player := gameState.players[gameState.currentPlayerId]; player != nil && player.IsNPC {
-		go handleNPCTurn()
-	}*/
+	return
 }
 
 func handleNPCTurn() {
@@ -1483,10 +1551,40 @@ func getScore(questionId string) int {
 	return price
 }
 
+func getQuestion(questionId string) string {
+	var a, b, c int
+	_, err := fmt.Sscanf(questionId, "%d_%d_%d", &a, &b, &c)
+	question := getQuestionText(a-1, b-1, c-1)
+	if ( err != nil) {
+		log.Printf("question questionId is: %s", "err!")
+		return "";
+	}
+	log.Printf("question questionId is: %s", question)
+	return question
+}
+
+func getAnswer(questionId string) string {
+	var a, b, c int
+	_, err := fmt.Sscanf(questionId, "%d_%d_%d", &a, &b, &c)
+	if ( err != nil) {
+		return "";
+	}
+	
+	question := getQuestionAnswer1(a-1, b-1, c-1)
+	// If getQuestionAnswer1 didn't return a result, fallback to getQuestionAnswer2
+	if question == "" {
+		question = getQuestionAnswer2(a-1, b-1, c-1)
+	}
+	
+	log.Printf("question answer is: %s", question)
+	return question
+}
+
 // Функции для работы с вопросами
 
-func getQuestionsTable(roundNum int, filterAnswered bool) string {
+func getQuestionsTable(roundNum int, filterAnswered bool) (string, bool, error) {
 	var result []string
+	isempty := true
 
 	log.Printf("answered: %+v", gameState.answeredQuestions)
 
@@ -1495,11 +1593,13 @@ func getQuestionsTable(roundNum int, filterAnswered bool) string {
 		result = append(result, getThemeName(roundNum, i))
 		questionsCount := getQuestionsCount(roundNum, i)
 		for j := 0; j < 10; j++ {
-			if (i < questionsCount) {
+			if (j < questionsCount) {
 				questId, _ := getQuestionStringId(roundNum+1, i+1, j+1)
 				if (filterAnswered && gameState.answeredQuestions[questId]) {
 					result = append(result, "-")
 				} else {
+					isempty = false
+					log.Printf("not empty: %d %d %d", roundNum, i, j)
 					result = append(result, getQuestionPrice(roundNum, i, j))
 				}
 			} else {
@@ -1508,7 +1608,8 @@ func getQuestionsTable(roundNum int, filterAnswered bool) string {
 		}
 	}
 
-	return strings.Join(result, "|")
+	log.Printf("isempty = %t", isempty)
+	return strings.Join(result, "|"), isempty, nil
 }
 
 func getThemesCountForRound(roundNum int) int {
@@ -1542,6 +1643,76 @@ func getQuestionPrice(roundNum int, themeNum int, questNum int) string {
 	jsonString := string(raw)
 
 	path := fmt.Sprintf("rounds.0.round.%d.themes.0.theme.%d.questions.0.question.%d.@price", roundNum, themeNum, questNum)
+	return gjson.Get(jsonString, path).String()
+}
+
+func getQuestionText(roundNum int, themeNum int, questNum int) string {
+    raw, err := json.Marshal(gameState.packageJson)
+    if err != nil {
+        return ""
+    }
+
+    jsonString := string(raw)
+
+    // 1. get all params
+    basePath := fmt.Sprintf(
+        "rounds.0.round.%d.themes.0.theme.%d.questions.0.question.%d.params.0.param",
+        roundNum, themeNum, questNum,
+    )
+
+    params := gjson.Get(jsonString, basePath).Array()
+
+    var questionParam gjson.Result
+
+    // 2. find param with @name == "question"
+    for _, p := range params {
+        if p.Get("@name").String() == "question" {
+            questionParam = p
+            break
+        }
+    }
+
+    if !questionParam.Exists() {
+        return ""
+    }
+
+    // 3. get number of lines
+    items := questionParam.Get("item").Array()
+
+    // 4. loop and collect text lines
+    parts := make([]string, 0, len(items))
+    for _, item := range items {
+        text := item.Get("#text").String()
+        if text != "" {
+            parts = append(parts, text)
+        }
+    }
+
+    // 5. join lines
+    return strings.Join(parts, " ")
+}
+
+func getQuestionAnswer1(roundNum int, themeNum int, questNum int) string {
+	raw, _ := json.Marshal(gameState.packageJson)
+	jsonString := string(raw)
+
+	path := fmt.Sprintf(
+		"rounds.0.round.%d.themes.0.theme.%d.questions.0.question.%d.right.0.answer.0.#text",
+		roundNum, themeNum, questNum,
+	)
+
+	return gjson.Get(jsonString, path).String()
+}
+
+func getQuestionAnswer2(roundNum int, themeNum int, questNum int) string {
+	raw, _ := json.Marshal(gameState.packageJson)
+	jsonString := string(raw)
+
+	path := fmt.Sprintf(
+		"rounds.0.round.%d.themes.0.theme.%d.questions.0.question.%d.params.#.param.#(@name==\"answer\").item.#.#text|@flatten",
+		roundNum, themeNum, questNum,
+	)
+
 	return gjson.Get(jsonString, path).String()
 }
 

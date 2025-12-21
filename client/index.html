@@ -494,6 +494,8 @@
     <div class="players-zone" id="playersZone"></div>
 
 <script>
+        const HOST_ADDRESS = 'http://localhost:3000';
+
         // Глобальные переменные
         const urlParams = new URLSearchParams(window.location.search);
         const playerId = parseInt(urlParams.get('id')) || 1;
@@ -501,11 +503,6 @@
         // Словари для медиа файлов
         let files = {}; // path: Blob
         let urls = {};  // path: URL string
-        
-        // Функция для получения URL сервера
-        function getServerUrl() {
-            return 'http://localhost:8080';
-        }
 
         // Состояние игры
         let gameData = {
@@ -557,7 +554,7 @@
 
         // Загрузка данных
         async function loadData() {
-            const response = await fetch(`${getServerUrl()}/data`);
+            const response = await fetch(`${HOST_ADDRESS}/data`);
             const data = await response.json();
             gameData.packageJson = data.packageJson;
             gameData.players = data.players;
@@ -574,7 +571,7 @@
 
         // Загрузка медиа
         async function loadMedia() {
-            const response = await fetch(`${getServerUrl()}/media`);
+            const response = await fetch(`${HOST_ADDRESS}/media`);
             const zipBlob = await response.blob();
             gameData.mediaZip = await processZip(zipBlob);
         }
@@ -598,7 +595,7 @@
                 const formData = new URLSearchParams();
                 formData.append('id', playerId);
                 
-                await fetch(`${getServerUrl()}/startacknowledge`, {
+                await fetch(`${HOST_ADDRESS}/startacknowledge`, {
                     method: 'POST',
                     body: formData
                 });
@@ -710,7 +707,7 @@
         // Обновление очков
         async function updateScores() {
             try {
-                const response = await fetch(`${getServerUrl()}/scores`);
+                const response = await fetch(`${HOST_ADDRESS}/scores`);
                 const scores = await response.json();
                 
                 scores.forEach(score => {
@@ -726,7 +723,7 @@
 
         // Подключение к WebSocket
         function connectWebSocket() {
-            const wsUrl = getServerUrl().replace('http', 'ws');
+            const wsUrl = HOST_ADDRESS.replace('http', 'ws');
             gameData.ws = new WebSocket(`${wsUrl}/ws`);
             
             gameData.ws.onmessage = (event) => {
@@ -794,7 +791,7 @@
 
         // Перерисовка таблицы вопросов
         async function redrawQuestionTable(str) {
-            const response = await fetch(`${getServerUrl()}/currentround`);
+            const response = await fetch(`${HOST_ADDRESS}/currentround`);
             const roundNum = parseInt(await response.text());
 
             const centerZone = document.getElementById('centerZone');
@@ -860,7 +857,7 @@
         // Проверка текущего игрока
         async function checkCurrentPlayer() {
             try {
-                const response = await fetch(`${getServerUrl()}/currentplayer`);
+                const response = await fetch(`${HOST_ADDRESS}/currentplayer`);
                 const currentPlayerId = parseInt(await response.text());
                 gameData.currentPlayerId = currentPlayerId;
                 $(`.player-card`).removeClass('current-player');
@@ -926,7 +923,7 @@
             formData.append('question', questionNum);
             formData.append('player', playerId);
 
-            await fetch(`${getServerUrl()}/selectquestion`, {
+            await fetch(`${HOST_ADDRESS}/selectquestion`, {
                 method: 'POST',
                 body: formData
             });
@@ -1233,7 +1230,7 @@
                 
                 const formData = new URLSearchParams();
                 formData.append('id-player', playerId);
-                fetch(`${getServerUrl()}/timerdone`, {
+                fetch(`${HOST_ADDRESS}/timerdone`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1319,7 +1316,7 @@
                 formData.append('id-player', playerId);
                 formData.append('text', answerText);
                 
-                await fetch(`${getServerUrl()}/answer`, {
+                await fetch(`${HOST_ADDRESS}/answer`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1402,7 +1399,7 @@
                 formData.append('player', playerId);
                 formData.append('timestamp', Date.now().toString());
                 
-                await fetch(`${getServerUrl()}/requestanswer`, {
+                await fetch(`${HOST_ADDRESS}/requestanswer`, {
                     method: 'POST',
                     body: formData
                 });

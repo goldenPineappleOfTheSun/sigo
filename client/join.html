@@ -146,6 +146,8 @@
     </div>
 
     <script>
+        const HOST_ADDRESS = 'http://localhost:3000';
+
         // Получаем ID из URL параметра
         const urlParams = new URLSearchParams(window.location.search);
         const playerId = urlParams.get('id') || '1';
@@ -194,7 +196,7 @@
             }
 
             try {
-                const response = await fetch('http://localhost:8080/join', {
+                const response = await fetch(`${HOST_ADDRESS}/join`, {
                     method: 'POST',
                     body: formData
                 });

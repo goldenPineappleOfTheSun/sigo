@@ -1,6 +1,6 @@
 module siziph
 
-go 1.24.0
+go 1.22.0
 
 require (
 	github.com/yeka/zip v0.0.0-20231116150916-03d6312748a9

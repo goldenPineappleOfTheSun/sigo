@@ -168,6 +168,8 @@
     </div>
 
     <script>
+        const HOST_ADDRESS = 'http://localhost:3000';
+
         const selectEl = document.getElementById("character");
         const submitBtn = document.getElementById("submitBtn");
         const errorBox = document.getElementById("characterError");
@@ -175,7 +177,7 @@
         // Загружаем список персонажей
         async function loadCharacters() {
             try {
-                const res = await fetch("http://localhost:8080/npccharacters");
+                const res = await fetch(`${HOST_ADDRESS}/npccharacters`);
                 const raw = await res.json();
                 const list = raw.map(x => x.name);
 
@@ -206,7 +208,7 @@
             formData.append("character", selectEl.value);
 
             try {
-                const response = await fetch("http://localhost:8080/joinnpc", {
+                const response = await fetch(`${HOST_ADDRESS}/joinnpc`, {
                     method: "POST",
                     body: formData
                 });

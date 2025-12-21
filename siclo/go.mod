@@ -1,6 +1,6 @@
 module siclo
 
-go 1.24.0
+go 1.22.0
 
 require github.com/anthropics/anthropic-sdk-go v1.17.0
 

@@ -14,9 +14,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"html/template"
 
+	"github.com/joho/godotenv"
 	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
+
 	"github.com/goldenpineappleofthesun/siziph"
 	"github.com/goldenpineappleofthesun/siclo"
 )
@@ -99,6 +102,8 @@ func init() {
 }
 
 func main() {
+	_ = godotenv.Load("../.env")
+	
 	// Очищаем папку players при старте сервера
 	os.RemoveAll("package")
 	os.RemoveAll("players")
@@ -116,7 +121,11 @@ func main() {
 	// Запускаем broadcaster для WebSocket
 	go gameState.broadcaster()
 
-	http.Handle("/",                 http.FileServer(http.Dir("../client")))
+	http.Handle("/index.html",       render("index"))
+	http.Handle("/join.html",        render("join"))
+	http.Handle("/joinhost.html",    render("joinhost"))
+	http.Handle("/joinnpc.html",     render("joinnpc"))
+	http.Handle("/client/",          http.StripPrefix("/client/",http.FileServer(http.Dir("/app/client")),),)
 	http.Handle("/upload",           withCORS(http.HandlerFunc(handleUpload)))
 	http.Handle("/join",             withCORS(http.HandlerFunc(handleJoin)))
 	http.Handle("/joinnpc",          withCORS(http.HandlerFunc(handleJoinNPC)))
@@ -142,6 +151,28 @@ func main() {
 
 	log.Println("Server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func render(page string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tmpl, err := template.ParseFiles("/app/client/" + page + ".html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		data := map[string]string{
+			"host": os.Getenv("HOST_ADDRESS"),
+		}
+
+		if data["host"] == "" {
+			data["host"] = "http://localhost:3000"
+		}
+
+		if err := tmpl.Execute(w, data); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
 }
 
 func (gs *GameState) broadcaster() {

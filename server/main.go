@@ -116,6 +116,7 @@ func main() {
 	// Запускаем broadcaster для WebSocket
 	go gameState.broadcaster()
 
+	http.Handle("/",                 http.FileServer(http.Dir("../client")))
 	http.Handle("/upload",           withCORS(http.HandlerFunc(handleUpload)))
 	http.Handle("/join",             withCORS(http.HandlerFunc(handleJoin)))
 	http.Handle("/joinnpc",          withCORS(http.HandlerFunc(handleJoinNPC)))
@@ -126,7 +127,7 @@ func main() {
 	http.Handle("/data",             withCORS(http.HandlerFunc(handleData)))
 	http.Handle("/media",            withCORS(http.HandlerFunc(handleMedia)))
 	http.Handle("/currentplayer",    withCORS(http.HandlerFunc(handleCurrentPlayer)))
-	http.Handle("/currentround",    withCORS(http.HandlerFunc(handleCurrentRound)))
+	http.Handle("/currentround",     withCORS(http.HandlerFunc(handleCurrentRound)))
 	http.Handle("/playerstate",      withCORS(http.HandlerFunc(handlePlayerState)))
 	http.Handle("/start",            withCORS(http.HandlerFunc(handleStart)))
 	http.Handle("/startacknowledge", withCORS(http.HandlerFunc(handleStartAcknowledge)))

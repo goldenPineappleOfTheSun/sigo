@@ -225,7 +225,7 @@
         <div class="form-section">
             <h2>1. Загрузить SIQ файл</h2>
             <div class="status" id="packageStatus"></div>
-            <form id="uploadForm" enctype="multipart/form-data">
+            <form method="POST" id="uploadForm" enctype="multipart/form-data">
                 <div class="form-group">
                     <label for="siq">Файл .siq:</label>
                     <input type="file" id="siq" name="siq" accept=".siq" required>
@@ -239,7 +239,7 @@
         <div class="form-section">
             <h2>2. Выбрать ведущего</h2>
             <div class="status" id="hostStatus"></div>
-            <form id="npcForm">
+            <form method="POST" id="npcForm">
                 <div class="form-group">
                     <label for="character">Выберите персонажа:</label>
                     <select class="selectbox" id="character" name="character" required>

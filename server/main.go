@@ -1462,9 +1462,9 @@ func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool
 		hostDescription = hostPlayer.NPCCharacter.HostPrompt
 	}
 	
-	claudeAnswer, _ := siclo.ValidateAnswer(hostName, "Отвечай коротко. " + hostDescription, 
+	claudeAnswer, _ := siclo.ValidateAnswer(hostName, "Пиши коротко, не называя то что написано на карточке ответа. " + hostDescription, 
 		question, answerText, expectedAnswer);
-	log.Printf("send to claude (%s, %s, %s, %s, %s)", hostName, "Отвечай коротко. " + hostDescription, 
+	log.Printf("send to claude (%s, %s, %s, %s, %s)", hostName, "Пиши коротко, не называя то что написано на карточке ответа. " + hostDescription, 
 		question, answerText, expectedAnswer)
 	result := claudeAnswer.Result;
 	hostSpeak := claudeAnswer.Justification;

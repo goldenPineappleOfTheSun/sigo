@@ -1021,7 +1021,7 @@
         async function showAudioMedia(data) {
             let name = data['#text'];
             let url = urls[`questions/Audio/${name}`]
-            let img = $('<img>').attr('src', './music.gif').addClass('media-audio media-content')
+            let img = $('<img>').attr('src', `${HOST_ADDRESS}/client/music.gif`).addClass('media-audio media-content')
             $('#centerZone').html('').append(img)
             return new Promise((resolve, reject) => {
                 const audio = new Audio(url);
@@ -1106,92 +1106,6 @@
                 }
             }
         }
-
-        // Получение медиа из вопроса
-        /*function getQuestionMedia(question) {
-            const media = [];
-            
-            if (!question.params) return media;
-            
-            const params = Array.isArray(question.params) ? question.params : [question.params];
-            for (const paramGroup of params) {
-                const paramList = Array.isArray(paramGroup.param) ? paramGroup.param : [paramGroup.param];
-                for (const param of paramList) {
-                    if (!param || !param.item) continue;
-                    
-                    // Проверяем имя параметра - нас интересует только "question"
-                    if (param['@name'] !== 'question') continue;
-                    
-                    const items = Array.isArray(param.item) ? param.item : [param.item];
-                    for (const item of items) {
-                        if (typeof item === 'string') {
-                            // Простой текст
-                            media.push({ type: 'text', content: item });
-                        } else if (item['#text'] !== undefined) {
-                            const text = item['#text'];
-                            const type = item['@type'];
-                            const isRef = item['@isRef'] === 'True' || item['@isRef'] === true;
-                            
-                            if (isRef && type) {
-                                // Это ссылка на медиа файл
-                                if (type === 'image' || text.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                                    media.push({ type: 'image', content: text });
-                                } else if (type === 'video' || text.match(/\.(mp4|avi|mov|webm)$/i)) {
-                                    media.push({ type: 'video', content: text });
-                                } else if (type === 'audio' || text.match(/\.(mp3|wav|ogg)$/i)) {
-                                    media.push({ type: 'audio', content: text });
-                                } else {
-                                    media.push({ type: 'text', content: text });
-                                }
-                            } else {
-                                // Обычный текст
-                                media.push({ type: 'text', content: text });
-                            }
-                        }
-                    }
-                }
-            }
-            
-            return media;
-        }
-
-        // Отображение медиа
-        function displayMedia(media) {
-            const centerZone = document.getElementById('centerZone');
-            let html = '<div class="media-content">';
-            
-            switch (media.type) {
-                case 'text':
-                    html += `<div class="media-text">${media.content}</div>`;
-                    break;
-                case 'image':
-                    const imageUrl = getMediaUrl(media.content);
-                    if (imageUrl) {
-                        html += `<img src="${imageUrl}" alt="Image" class="media-image">`;
-                    } else {
-                        html += `<div class="media-text">Изображение: ${media.content}</div>`;
-                    }
-                    break;
-                case 'video':
-                    const videoUrl = getMediaUrl(media.content);
-                    if (videoUrl) {
-                        html += `<video src="${videoUrl}" controls class="media-video"></video>`;
-                    } else {
-                        html += `<div class="media-text">Видео: ${media.content}</div>`;
-                    }
-                    break;
-                case 'audio':
-                    html += `<div class="media-audio">🎵</div>`;
-                    const audioUrl = getMediaUrl(media.content);
-                    if (audioUrl) {
-                        html += `<audio src="${audioUrl}" autoplay></audio>`;
-                    }
-                    break;
-            }
-            
-            html += '</div>';
-            centerZone.innerHTML = html;
-        }*/
 
         // Обработка cananswer
         function handleCanAnswer(timestamp) {

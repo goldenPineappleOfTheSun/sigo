@@ -554,7 +554,7 @@
 
         // Загрузка данных
         async function loadData() {
-            const response = await fetch(`${HOST_ADDRESS}/data`);
+            const response = await fetch(`data`);
             const data = await response.json();
             gameData.packageJson = data.packageJson;
             gameData.players = data.players;
@@ -571,7 +571,7 @@
 
         // Загрузка медиа
         async function loadMedia() {
-            const response = await fetch(`${HOST_ADDRESS}/media`);
+            const response = await fetch(`media`);
             const zipBlob = await response.blob();
             gameData.mediaZip = await processZip(zipBlob);
         }
@@ -595,7 +595,7 @@
                 const formData = new URLSearchParams();
                 formData.append('id', playerId);
                 
-                await fetch(`${HOST_ADDRESS}/startacknowledge`, {
+                await fetch(`startacknowledge`, {
                     method: 'POST',
                     body: formData
                 });
@@ -707,7 +707,7 @@
         // Обновление очков
         async function updateScores() {
             try {
-                const response = await fetch(`${HOST_ADDRESS}/scores`);
+                const response = await fetch(`scores`);
                 const scores = await response.json();
                 
                 scores.forEach(score => {
@@ -791,7 +791,7 @@
 
         // Перерисовка таблицы вопросов
         async function redrawQuestionTable(str) {
-            const response = await fetch(`${HOST_ADDRESS}/currentround`);
+            const response = await fetch(`currentround`);
             const roundNum = parseInt(await response.text());
 
             const centerZone = document.getElementById('centerZone');
@@ -857,7 +857,7 @@
         // Проверка текущего игрока
         async function checkCurrentPlayer() {
             try {
-                const response = await fetch(`${HOST_ADDRESS}/currentplayer`);
+                const response = await fetch(`currentplayer`);
                 const currentPlayerId = parseInt(await response.text());
                 gameData.currentPlayerId = currentPlayerId;
                 $(`.player-card`).removeClass('current-player');
@@ -923,7 +923,7 @@
             formData.append('question', questionNum);
             formData.append('player', playerId);
 
-            await fetch(`${HOST_ADDRESS}/selectquestion`, {
+            await fetch(`selectquestion`, {
                 method: 'POST',
                 body: formData
             });
@@ -1021,7 +1021,7 @@
         async function showAudioMedia(data) {
             let name = data['#text'];
             let url = urls[`questions/Audio/${name}`]
-            let img = $('<img>').attr('src', `${HOST_ADDRESS}/client/music.gif`).addClass('media-audio media-content')
+            let img = $('<img>').attr('src', `client/music.gif`).addClass('media-audio media-content')
             $('#centerZone').html('').append(img)
             return new Promise((resolve, reject) => {
                 const audio = new Audio(url);
@@ -1144,7 +1144,7 @@
                 
                 const formData = new URLSearchParams();
                 formData.append('id-player', playerId);
-                fetch(`${HOST_ADDRESS}/timerdone`, {
+                fetch(`timerdone`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1230,7 +1230,7 @@
                 formData.append('id-player', playerId);
                 formData.append('text', answerText);
                 
-                await fetch(`${HOST_ADDRESS}/answer`, {
+                await fetch(`answer`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1313,7 +1313,7 @@
                 formData.append('player', playerId);
                 formData.append('timestamp', Date.now().toString());
                 
-                await fetch(`${HOST_ADDRESS}/requestanswer`, {
+                await fetch(`requestanswer`, {
                     method: 'POST',
                     body: formData
                 });

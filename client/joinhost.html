@@ -294,7 +294,7 @@
         // Функция проверки количества игроков (исключая хост с ID 1000)
         async function checkPlayers() {
             try {
-                const response = await fetch(`${HOST_ADDRESS}/data`);
+                const response = await fetch(`data`);
                 const data = await response.json();
                 const regularPlayers = data.players.filter(p => p.id < 1000);
                 
@@ -336,7 +336,7 @@
         // Загружаем список персонажей
         async function loadCharacters() {
             try {
-                const res = await fetch(`${HOST_ADDRESS}/npccharacters`);
+                const res = await fetch(`npccharacters`);
                 const raw = await res.json();
                 const list = raw.map(x => x.name);
 
@@ -372,7 +372,7 @@
             }
 
             try {
-                const response = await fetch(`${HOST_ADDRESS}/upload`, {
+                const response = await fetch(`upload`, {
                     method: 'POST',
                     body: formData
                 });
@@ -380,7 +380,7 @@
                 if (response.ok) {
                     // Проверяем, что сервер в состоянии joining
                     try {
-                        const stateResponse = await fetch(`${HOST_ADDRESS}/state`);
+                        const stateResponse = await fetch(`state`);
                         const state = await stateResponse.text();
                         if (state !== 'joining') {
                             packageStatus.textContent = 'Предупреждение: сервер не в состоянии joining (текущее: ' + state + ')';
@@ -429,7 +429,7 @@
             formData.append("character", selectEl.value);
 
             try {
-                const response = await fetch(`${HOST_ADDRESS}/joinshowman`, {
+                const response = await fetch(`joinshowman`, {
                     method: "POST",
                     body: formData
                 });
@@ -478,7 +478,7 @@
             }
 
             try {
-                const response = await fetch(`${HOST_ADDRESS}/start`, {
+                const response = await fetch(`start`, {
                     method: 'POST'
                 });
 
@@ -557,7 +557,7 @@
             resetBtn.textContent = 'Сброс...';
 
             try {
-                const response = await fetch(`${HOST_ADDRESS}/reset`, {
+                const response = await fetch(`reset`, {
                     method: 'POST'
                 });
 

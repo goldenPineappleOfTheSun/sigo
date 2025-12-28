@@ -723,8 +723,10 @@
 
         // Подключение к WebSocket
         function connectWebSocket() {
-            const wsUrl = HOST_ADDRESS.replace('http', 'ws');
-            gameData.ws = new WebSocket(`${wsUrl}/ws`);
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${location.host}/ws`;
+
+            gameData.ws = new WebSocket(wsUrl);
             
             gameData.ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);

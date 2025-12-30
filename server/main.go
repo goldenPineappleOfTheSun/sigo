@@ -141,7 +141,6 @@ func main() {
 	http.Handle("/start",            withCORS(http.HandlerFunc(handleStart)))
 	http.Handle("/startacknowledge", withCORS(http.HandlerFunc(handleStartAcknowledge)))
 	http.Handle("/selectquestion",   withCORS(http.HandlerFunc(handleSelectQuestion)))
-	//http.Handle("/acknowledge",      withCORS(http.HandlerFunc(handleAcknowledge)))
 	http.Handle("/questionbeenshown",withCORS(http.HandlerFunc(handleQuestionBeenShown)))
 	http.Handle("/requestanswer",    withCORS(http.HandlerFunc(handleRequestAnswer)))
 	http.Handle("/answer",           withCORS(http.HandlerFunc(handleAnswer)))
@@ -999,7 +998,6 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 	})
 
 	gameState.state = StateQuestion
-
 	gameStateInternal.questionShownReceived = make(map[int]bool)
 	gameStateInternal.requestAnswerReceived = make([]PlayerAnswerRequest, 0)
 	gameStateInternal.playersAnswered       = make([]int, 0)
@@ -1051,90 +1049,6 @@ func transitionToSelectQuestionForced() {
 		go handleNPCTurn()
 	}
 }
-
-/*func transitionToQuestion() {
-	log.Printf("call transitionToQuestion")
-
-	// Проверяем что все реальные игроки отправили acknowledge
-	allAcknowledged := true
-	for id, player := range gameState.players {
-		if !player.IsNPC {
-			if !gameStateInternal.acknowledgesReceived[id] {
-				allAcknowledged = false
-				break
-			}
-		}
-	}
-
-	if allAcknowledged {
-		gameState.state = StateQuestion
-		gameStateInternal.questionShownReceived = make(map[int]bool)
-		gameStateInternal.requestAnswerReceived = make([]PlayerAnswerRequest, 0)
-		gameStateInternal.playersAnswered       = make([]int, 0)
-
-		// Время показа вопроса (с небольшой задержкой)
-		showTime := time.Now().UTC().Add(500 * time.Millisecond)
-		gameStateInternal.selectedQuestionTime = showTime
-
-		gameState.broadcastMessage("showquestion", map[string]interface{}{
-			"id":   gameStateInternal.selectedQuestionId,
-			"time": showTime.Unix() * 1000, // UTC в миллисекундах
-		})
-
-		// Таймаут для questionbeenshown
-		if gameStateInternal.questionShownTimeout != nil {
-			gameStateInternal.questionShownTimeout.Stop()
-		}
-		gameStateInternal.questionShownTimeout = time.AfterFunc(3*time.Second, func() {
-			gameState.mu.Lock()
-			if gameState.state == StateQuestion {
-				sendCanAnswer()
-			}
-			gameState.mu.Unlock()
-		})
-	}
-}*/
-
-/*func handleAcknowledge(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	gameState.mu.Lock()
-	defer gameState.mu.Unlock()
-
-	if gameState.state != StateStartAck {
-		http.Error(w, "Game is not in wait-acknowledge state", http.StatusBadRequest)
-		return
-	}
-
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, "Error parsing form", http.StatusBadRequest)
-		return
-	}
-
-	idStr := r.FormValue("id")
-	if idStr == "" {
-		http.Error(w, "Missing id", http.StatusBadRequest)
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid id", http.StatusBadRequest)
-		return
-	}
-
-	gameStateInternal.acknowledgesReceived[id] = true
-
-	// Проверяем можно ли переходить к question
-	transitionToQuestion()
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Acknowledged"))
-}*/
 
 func handleStartAcknowledge(w http.ResponseWriter, r *http.Request) {
 	log.Printf("call handleStartAcknowledge()")

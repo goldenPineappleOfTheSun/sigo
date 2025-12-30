@@ -1311,16 +1311,28 @@
             freezeTimer();
             
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s
+
                 const formData = new URLSearchParams();
                 formData.append('player', playerId);
                 formData.append('timestamp', Date.now().toString());
-                
-                await fetch(`requestanswer`, {
+
+                const response = await fetch('requestanswer', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
             } catch (error) {
                 console.error('Ошибка requestanswer:', error);
+                enableAnswerButton();
             }
         }
 

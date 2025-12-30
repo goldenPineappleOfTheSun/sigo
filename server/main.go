@@ -139,6 +139,7 @@ func main() {
 	http.Handle("/currentround",     withCORS(http.HandlerFunc(handleCurrentRound)))
 	http.Handle("/playerstate",      withCORS(http.HandlerFunc(handlePlayerState)))
 	http.Handle("/start",            withCORS(http.HandlerFunc(handleStart)))
+	http.Handle("/actualize",        withCORS(http.HandlerFunc(handleActualize)))
 	http.Handle("/startacknowledge", withCORS(http.HandlerFunc(handleStartAcknowledge)))
 	http.Handle("/selectquestion",   withCORS(http.HandlerFunc(handleSelectQuestion)))
 	http.Handle("/questionbeenshown",withCORS(http.HandlerFunc(handleQuestionBeenShown)))
@@ -786,6 +787,7 @@ type GameStateInternal struct {
 	selectedQuestionId       string
 	selectedQuestionTime     time.Time
 	canAnswerTimestamp       int64
+	waitAnswerWinner         int
 	waitAnswerTimeout        *time.Timer
 	acknowledgeTimeout       *time.Timer
 	questionShownTimeout     *time.Timer
@@ -925,6 +927,31 @@ func handleReset(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Game reset successfully"))
+}
+
+func handleActualize(w http.ResponseWriter, r *http.Request) {
+	if (gameState.state == StateSelectQuestion) {
+		log.Printf("before send table")
+		table, _, _ := getQuestionsTable(gameState.roundNum - 1, true)
+		gameState.broadcastMessage("questionstable", map[string]interface{}{
+			"table": table,
+		})
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Actualized"))
+		return;
+	}
+
+	if (gameState.state == StateWaitAnswer) {		
+		gameState.broadcastMessage("waitanswer", map[string]interface{}{
+			"playerId": gameStateInternal.waitAnswerWinner,
+		})
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Actualized"))
+		return;
+	}
+	
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Not actualized"))
 }
 
 func getQuestionStringId(round int, theme int, question int) (string, error) {
@@ -1252,13 +1279,13 @@ func processAnswerRequests() {
 
 	// Находим random player who answered
 	idx := time.Now().UnixNano() % int64(len(gameStateInternal.requestAnswerReceived))
-	winnerId := gameStateInternal.requestAnswerReceived[idx].playerId
-	log.Printf("winnerId %d", winnerId)
+	gameStateInternal.waitAnswerWinner = gameStateInternal.requestAnswerReceived[idx].playerId
+	log.Printf("winnerId %d", gameStateInternal.waitAnswerWinner)
 
-	if winnerId != -1 {
+	if gameStateInternal.waitAnswerWinner != -1 {
 		gameState.state = StateWaitAnswer
 		gameState.broadcastMessage("waitanswer", map[string]interface{}{
-			"playerId": winnerId,
+			"playerId": gameStateInternal.waitAnswerWinner,
 		})
 
 		// Исключаем победителя

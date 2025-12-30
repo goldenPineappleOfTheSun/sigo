@@ -343,7 +343,7 @@
         }
 
         .player-bubble {    
-            --duration: 5s;
+            --duration: 20s;
             
             position: absolute;
             display: none;
@@ -541,7 +541,9 @@
                 ]);
                 
                 // Подключаемся к WebSocket
-                connectWebSocket();
+                await connectWebSocket();
+
+                await actualize();
                 
                 document.getElementById('disabledOverlay').classList.remove('visible');
             } catch (error) {
@@ -574,6 +576,12 @@
             const response = await fetch(`media`);
             const zipBlob = await response.blob();
             gameData.mediaZip = await processZip(zipBlob);
+        }
+
+        async function actualize() {
+            await fetch(`actualize`, {
+                method: 'POST',
+            });
         }
 
         // Обработка сообщения start от сервера
@@ -722,7 +730,7 @@
         }
 
         // Подключение к WebSocket
-        function connectWebSocket() {
+        async function connectWebSocket() {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${location.host}/ws`;
 
@@ -742,6 +750,10 @@
                 addLog('Соединение закрыто');
                 setTimeout(connectWebSocket, 3000);
             };
+
+            return new Promise(resolve => {
+                gameData.ws.onopen = () => resolve();
+            })
         }
 
         // Обработка сообщений WebSocket
@@ -1287,7 +1299,7 @@
             if (bubble) {
                 $(bubble).text(text);
                 $(bubble).addClass('fly');
-                setTimeout(() => $(bubble).removeClass('fly'), 5000)
+                setTimeout(() => $(bubble).removeClass('fly'), 20000)
             }
 
             addLog(`Игрок ${playerId}: ${text}`);

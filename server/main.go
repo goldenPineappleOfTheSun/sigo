@@ -141,7 +141,7 @@ func main() {
 	http.Handle("/start",            withCORS(http.HandlerFunc(handleStart)))
 	http.Handle("/startacknowledge", withCORS(http.HandlerFunc(handleStartAcknowledge)))
 	http.Handle("/selectquestion",   withCORS(http.HandlerFunc(handleSelectQuestion)))
-	http.Handle("/acknowledge",      withCORS(http.HandlerFunc(handleAcknowledge)))
+	//http.Handle("/acknowledge",      withCORS(http.HandlerFunc(handleAcknowledge)))
 	http.Handle("/questionbeenshown",withCORS(http.HandlerFunc(handleQuestionBeenShown)))
 	http.Handle("/requestanswer",    withCORS(http.HandlerFunc(handleRequestAnswer)))
 	http.Handle("/answer",           withCORS(http.HandlerFunc(handleAnswer)))
@@ -989,7 +989,6 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	gameStateInternal.selectedQuestionId = stringId
-	//gameStateInternal.acknowledgesReceived = make(map[int]bool)
 
 	log.Printf("select question %s", stringId)
 
@@ -1001,17 +1000,9 @@ func handleSelectQuestion(w http.ResponseWriter, r *http.Request) {
 
 	gameState.state = StateQuestion
 
-	// Таймаут для acknowledge
-	/*if gameStateInternal.acknowledgeTimeout != nil {
-		gameStateInternal.acknowledgeTimeout.Stop()
-	}
-	gameStateInternal.acknowledgeTimeout = time.AfterFunc(5*time.Second, func() {
-		gameState.mu.Lock()
-		if gameState.state == StateQuestionAck {
-			transitionToQuestion()
-		}
-		gameState.mu.Unlock()
-	})*/
+	gameStateInternal.questionShownReceived = make(map[int]bool)
+	gameStateInternal.requestAnswerReceived = make([]PlayerAnswerRequest, 0)
+	gameStateInternal.playersAnswered       = make([]int, 0)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Question selected"))
@@ -1061,7 +1052,9 @@ func transitionToSelectQuestionForced() {
 	}
 }
 
-func transitionToQuestion() {
+/*func transitionToQuestion() {
+	log.Printf("call transitionToQuestion")
+
 	// Проверяем что все реальные игроки отправили acknowledge
 	allAcknowledged := true
 	for id, player := range gameState.players {
@@ -1100,9 +1093,9 @@ func transitionToQuestion() {
 			gameState.mu.Unlock()
 		})
 	}
-}
+}*/
 
-func handleAcknowledge(w http.ResponseWriter, r *http.Request) {
+/*func handleAcknowledge(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1141,7 +1134,7 @@ func handleAcknowledge(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Acknowledged"))
-}
+}*/
 
 func handleStartAcknowledge(w http.ResponseWriter, r *http.Request) {
 	log.Printf("call handleStartAcknowledge()")
@@ -1314,6 +1307,7 @@ func handleRequestAnswer(w http.ResponseWriter, r *http.Request) {
 	if !contains(gameStateInternal.playersAnswered, id) {
 		gameStateInternal.playersAnswered = append(gameStateInternal.playersAnswered, id)
 	}
+	log.Printf("playersAnswered = %s", gameStateInternal.playersAnswered)
 	
 
 	// Если это первый запрос, запускаем таймер для обработки
@@ -1473,7 +1467,7 @@ func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool
 	log.Printf("claudeAnswer is %s", hostSpeak)
 
 	queueIsEmpty := len(gameStateInternal.requestAnswerReceived) == 0
-	done := len(gameStateInternal.playersAnswered) == numberOfRealPlayers()
+	done := isAllPlayersAnswered()
 
 	gameState.broadcastMessage("validated", map[string]interface{}{
 		"idQuest":  idQuest,
@@ -1521,7 +1515,7 @@ func checkAndProcessAnswer(idQuest string, idPlayer int, answerText string) bool
 }
 
 func isAllPlayersAnswered() bool {
-	log.Printf("playersAnswered) = %d, players = %d", len(gameStateInternal.playersAnswered), numberOfRealPlayers())
+	log.Printf("playersAnswered = %d, players = %d", len(gameStateInternal.playersAnswered), numberOfRealPlayers())
 	return len(gameStateInternal.playersAnswered) == numberOfRealPlayers()
 }
 
